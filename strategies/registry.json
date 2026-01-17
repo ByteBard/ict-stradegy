@@ -1,13 +1,13 @@
 {
-  "version": "1.0",
-  "updated_at": "2025-01-17T12:00:00",
+  "version": "1.2",
+  "updated_at": "2025-01-17T16:00:00",
   "strategies": {
     "h2_pullback_v1": {
       "id": "h2_pullback_v1",
       "name": "H2回调策略",
       "description": "在多头趋势中，等待第二次回调(H2)后入场做多。这是Al Brooks价格行为学中最基础的顺势入场方法。",
       "version": "1.0.0",
-      "status": "validated",
+      "status": "implemented",
       "sources": [
         {
           "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
@@ -37,7 +37,7 @@
       "name": "L2回调策略",
       "description": "在空头趋势中，等待第二次反弹(L2)后入场做空。",
       "version": "1.0.0",
-      "status": "validated",
+      "status": "implemented",
       "sources": [
         {
           "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
@@ -61,6 +61,906 @@
       "changelog": ["初始版本"],
       "strategy_class": "L2PullbackStrategy",
       "config_file": "strategies/configs/l2_pullback.yaml"
+    },
+    "always_in_long_v1": {
+      "id": "always_in_long_v1",
+      "name": "Always In Long策略",
+      "description": "在明确的多头趋势中，保持做多方向直到趋势结束。基于80%惯性规则，趋势延续概率高。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [801, 805],
+          "slide_numbers": [],
+          "section": "Video 13A - Always In",
+          "original_name": "Always In Long",
+          "chinese_name": "持续做多",
+          "video_number": 13
+        }
+      ],
+      "category": "trend_following",
+      "tags": ["顺势", "趋势", "持仓管理"],
+      "market_conditions": ["BULL_TREND"],
+      "timeframes": ["5min", "15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "AlwaysInLongStrategy",
+      "config_file": null
+    },
+    "always_in_short_v1": {
+      "id": "always_in_short_v1",
+      "name": "Always In Short策略",
+      "description": "在明确的空头趋势中，保持做空方向直到趋势结束。基于80%惯性规则。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [801, 805],
+          "slide_numbers": [],
+          "section": "Video 13A - Always In",
+          "original_name": "Always In Short",
+          "chinese_name": "持续做空",
+          "video_number": 13
+        }
+      ],
+      "category": "trend_following",
+      "tags": ["顺势", "趋势", "持仓管理"],
+      "market_conditions": ["BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "AlwaysInShortStrategy",
+      "config_file": null
+    },
+    "hl_mtr_v1": {
+      "id": "hl_mtr_v1",
+      "name": "更高低点主要趋势反转策略",
+      "description": "空头趋势中检测更高低点(Higher Low)形成，配合多头趋势K线确认，入场做多。是空转多的关键反转信号。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [1001, 1005],
+          "slide_numbers": [],
+          "section": "Major Trend Reversal",
+          "original_name": "Higher Low MTR",
+          "chinese_name": "更高低点主要趋势反转",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "趋势反转", "MTR"],
+      "market_conditions": ["BEAR_TREND"],
+      "timeframes": ["15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.5,
+      "risk_reward_ratio": 3.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "HLMTRStrategy",
+      "config_file": null
+    },
+    "lh_mtr_v1": {
+      "id": "lh_mtr_v1",
+      "name": "更低高点主要趋势反转策略",
+      "description": "多头趋势中检测更低高点(Lower High)形成，配合空头趋势K线确认，入场做空。是多转空的关键反转信号。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [1801, 1805],
+          "slide_numbers": [],
+          "section": "Major Trend Reversal",
+          "original_name": "Lower High MTR",
+          "chinese_name": "更低高点主要趋势反转",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "趋势反转", "MTR"],
+      "market_conditions": ["BULL_TREND"],
+      "timeframes": ["15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.5,
+      "risk_reward_ratio": 3.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "LHMTRStrategy",
+      "config_file": null
+    },
+    "db_hl_mtr_v1": {
+      "id": "db_hl_mtr_v1",
+      "name": "双底更高低点反转策略",
+      "description": "空头趋势末端，检测双底形态后形成更高低点，是最可靠的空转多反转形态之一。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [1001, 1005],
+          "slide_numbers": [],
+          "section": "Major Trend Reversal",
+          "original_name": "Double Bottom Higher Low MTR",
+          "chinese_name": "双底更高低点反转",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "双底", "MTR", "高概率"],
+      "market_conditions": ["BEAR_TREND"],
+      "timeframes": ["15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.015,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 3.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "DBHLMTRStrategy",
+      "config_file": null
+    },
+    "dt_lh_mtr_v1": {
+      "id": "dt_lh_mtr_v1",
+      "name": "双顶更低高点反转策略",
+      "description": "多头趋势末端，检测双顶形态后形成更低高点，是可靠的多转空反转形态。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [2201, 2205],
+          "slide_numbers": [],
+          "section": "Major Trend Reversal",
+          "original_name": "Double Top Lower High MTR",
+          "chinese_name": "双顶更低高点反转",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "双顶", "MTR", "高概率"],
+      "market_conditions": ["BULL_TREND"],
+      "timeframes": ["15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.015,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 3.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "DTLHMTRStrategy",
+      "config_file": null
+    },
+    "tight_channel_v1": {
+      "id": "tight_channel_v1",
+      "name": "紧凑通道策略",
+      "description": "在紧凑通道(回调<2-3倍scalp目标)中顺势交易。紧凑通道代表强趋势，不做逆势交易，寻找小回调入场。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [1401, 1405],
+          "slide_numbers": [],
+          "section": "Channels",
+          "original_name": "Tight Channel / Small Pullback Trend",
+          "chinese_name": "紧凑通道/小回调趋势",
+          "video_number": null
+        }
+      ],
+      "category": "trend_following",
+      "tags": ["通道", "趋势", "小回调"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.65,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "TightChannelStrategy",
+      "config_file": null
+    },
+    "micro_channel_v1": {
+      "id": "micro_channel_v1",
+      "name": "微型通道策略",
+      "description": "检测微型通道(每根K线低点>=前根低点)，这是最强的趋势形态，只做顺势交易。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [1401, 1405],
+          "slide_numbers": [],
+          "section": "Channels",
+          "original_name": "Micro Channel",
+          "chinese_name": "微型通道",
+          "video_number": null
+        }
+      ],
+      "category": "trend_following",
+      "tags": ["通道", "强趋势", "微型通道"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.7,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "MicroChannelStrategy",
+      "config_file": null
+    },
+    "tr_breakout_v1": {
+      "id": "tr_breakout_v1",
+      "name": "交易区间突破策略",
+      "description": "交易区间突破策略，注意首次突破有50%概率失败。等待突破回调确认后入场更可靠。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [1601, 1605],
+          "slide_numbers": [],
+          "section": "Breakouts",
+          "original_name": "Trading Range Breakout",
+          "chinese_name": "交易区间突破",
+          "video_number": null
+        }
+      ],
+      "category": "breakout",
+      "tags": ["突破", "交易区间", "50%规则"],
+      "market_conditions": ["TRADING_RANGE"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.5,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "TRBreakoutStrategy",
+      "config_file": null
+    },
+    "breakout_pullback_v1": {
+      "id": "breakout_pullback_v1",
+      "name": "突破回调策略",
+      "description": "在突破后等待回调(Breakout Pullback)再入场，避免追突破被假突破套住。回调确认后入场成功率更高。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [1601, 1605],
+          "slide_numbers": [],
+          "section": "Breakouts",
+          "original_name": "Breakout Pullback",
+          "chinese_name": "突破回调",
+          "video_number": null
+        }
+      ],
+      "category": "breakout",
+      "tags": ["突破", "回调", "确认入场"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "BreakoutPullbackStrategy",
+      "config_file": null
+    },
+    "wedge_reversal_v1": {
+      "id": "wedge_reversal_v1",
+      "name": "楔形反转策略",
+      "description": "检测三推楔形形态(Wedge)，第三推后寻找反转入场。包括楔形顶和楔形底。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [2001, 2005],
+          "slide_numbers": [],
+          "section": "Wedges",
+          "original_name": "Wedge Reversal",
+          "chinese_name": "楔形反转",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "楔形", "三推"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND", "BULL_CHANNEL", "BEAR_CHANNEL"],
+      "timeframes": ["15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 2.5,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "WedgeReversalStrategy",
+      "config_file": null
+    },
+    "parabolic_wedge_v1": {
+      "id": "parabolic_wedge_v1",
+      "name": "抛物线楔形策略",
+      "description": "检测加速上涨/下跌的抛物线楔形，每推斜率更陡。出现在趋势末端，是高概率反转形态。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [501, 505],
+          "slide_numbers": [],
+          "section": "Wedges",
+          "original_name": "Parabolic Wedge",
+          "chinese_name": "抛物线楔形",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "楔形", "抛物线", "高概率"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.015,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 2.5,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "ParabolicWedgeStrategy",
+      "config_file": null
+    },
+    "second_signal_v1": {
+      "id": "second_signal_v1",
+      "name": "第二信号策略",
+      "description": "当第一个入场信号较弱时，等待第二个信号再入场。第二信号确认方向，减少假突破损失。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [501, 505],
+          "slide_numbers": [],
+          "section": "Entry Techniques",
+          "original_name": "2nd Signal",
+          "chinese_name": "第二信号",
+          "video_number": null
+        }
+      ],
+      "category": "entry_filter",
+      "tags": ["入场", "过滤", "确认"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND", "TRADING_RANGE"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "SecondSignalStrategy",
+      "config_file": null
+    },
+    "cup_handle_v1": {
+      "id": "cup_handle_v1",
+      "name": "杯柄形态策略",
+      "description": "检测杯柄形态(Cup and Handle)或无尽回调(Endless Pullback)，圆弧形回调后在柄部入场。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [2201, 2205],
+          "slide_numbers": [],
+          "section": "Patterns",
+          "original_name": "Cup and Handle / Endless Pullback",
+          "chinese_name": "杯柄形态/无尽回调",
+          "video_number": null
+        }
+      ],
+      "category": "pullback",
+      "tags": ["回调", "杯柄", "圆弧"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 2.5,
+      "created_at": "2025-01-17T14:00:00",
+      "updated_at": "2025-01-17T14:00:00",
+      "changelog": ["策略识别"],
+      "strategy_class": "CupHandleStrategy",
+      "config_file": null
+    },
+    "final_flag_v1": {
+      "id": "final_flag_v1",
+      "name": "最终旗形策略",
+      "description": "检测最终旗形(Final Flag)，通常是H2看涨旗形或L2看跌旗形。最终旗形后趋势可能反转。结合MAG(Moving Average Gap Bar)效果更好。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [101, 105],
+          "slide_numbers": [],
+          "section": "Video 38 - MTR Tops",
+          "original_name": "Final Bull Flag / Final Bear Flag",
+          "chinese_name": "最终旗形",
+          "video_number": 38
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "旗形", "最终旗形"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T15:00:00",
+      "updated_at": "2025-01-17T15:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "FinalFlagStrategy",
+      "config_file": null
+    },
+    "buy_the_close_v1": {
+      "id": "buy_the_close_v1",
+      "name": "收盘价做多策略",
+      "description": "在强势多头突破中，在阳线收盘价附近做多。适用于强劲的多头突破阶段，期望第二波上涨。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [201, 205],
+          "slide_numbers": [15, 16],
+          "section": "Video 40 - Entering Late in Trends",
+          "original_name": "Buy The Close",
+          "chinese_name": "收盘价做多",
+          "video_number": 40
+        }
+      ],
+      "category": "trend_following",
+      "tags": ["顺势", "突破", "收盘价"],
+      "market_conditions": ["BULL_TREND"],
+      "timeframes": ["5min", "15min", "1h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T15:00:00",
+      "updated_at": "2025-01-17T15:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "BuyTheCloseStrategy",
+      "config_file": null
+    },
+    "sell_the_close_v1": {
+      "id": "sell_the_close_v1",
+      "name": "收盘价做空策略",
+      "description": "在强势空头突破中，在阴线收盘价附近做空。适用于强劲的空头突破阶段。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [101, 105],
+          "slide_numbers": [],
+          "section": "Video 38 - MTR Tops",
+          "original_name": "Sell The Close",
+          "chinese_name": "收盘价做空",
+          "video_number": 38
+        }
+      ],
+      "category": "trend_following",
+      "tags": ["顺势", "突破", "收盘价"],
+      "market_conditions": ["BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T15:00:00",
+      "updated_at": "2025-01-17T15:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "SellTheCloseStrategy",
+      "config_file": null
+    },
+    "hh_mtr_v1": {
+      "id": "hh_mtr_v1",
+      "name": "更高高点主要趋势反转策略",
+      "description": "多头趋势中检测更高高点(Higher High)后出现反转信号，配合双顶形态做空。是多转空的关键反转信号。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [101, 105],
+          "slide_numbers": [],
+          "section": "Video 38 - MTR Tops",
+          "original_name": "Higher High MTR",
+          "chinese_name": "更高高点主要趋势反转",
+          "video_number": 38
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "趋势反转", "MTR", "双顶"],
+      "market_conditions": ["BULL_TREND"],
+      "timeframes": ["15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.5,
+      "risk_reward_ratio": 3.0,
+      "created_at": "2025-01-17T15:00:00",
+      "updated_at": "2025-01-17T15:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "HHMTRStrategy",
+      "config_file": null
+    },
+    "climax_reversal_v1": {
+      "id": "climax_reversal_v1",
+      "name": "高潮反转策略",
+      "description": "检测买入高潮(Buy Climax)或卖出高潮(Sell Climax)后的反转机会。连续高潮后反转概率增加。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [401, 405],
+          "slide_numbers": [10, 11, 12, 13],
+          "section": "Climax Reversals",
+          "original_name": "Buy/Sell Climax Reversal",
+          "chinese_name": "高潮反转",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "高潮", "买入高潮", "卖出高潮"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.5,
+      "risk_reward_ratio": 2.5,
+      "created_at": "2025-01-17T15:00:00",
+      "updated_at": "2025-01-17T15:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "ClimaxReversalStrategy",
+      "config_file": null
+    },
+    "second_leg_trap_v1": {
+      "id": "second_leg_trap_v1",
+      "name": "第二波陷阱策略",
+      "description": "交易区间内第二波走势常形成陷阱。80%的交易区间突破会失败。在第二波后寻找反向交易机会。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [401, 405],
+          "slide_numbers": [10],
+          "section": "TR Traps",
+          "original_name": "2nd Leg Trap",
+          "chinese_name": "第二波陷阱",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["交易区间", "陷阱", "80%规则"],
+      "market_conditions": ["TRADING_RANGE"],
+      "timeframes": ["5min", "15min", "1h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T15:00:00",
+      "updated_at": "2025-01-17T15:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "SecondLegTrapStrategy",
+      "config_file": null
+    },
+    "broad_channel_v1": {
+      "id": "broad_channel_v1",
+      "name": "宽幅通道策略",
+      "description": "宽幅通道包含多头趋势、空头趋势和交易区间。根据当日发展情况选择交易方向，低买高卖。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [601, 605],
+          "slide_numbers": [5],
+          "section": "Channels",
+          "original_name": "Broad Channel",
+          "chinese_name": "宽幅通道",
+          "video_number": null
+        }
+      ],
+      "category": "range_trading",
+      "tags": ["通道", "宽幅", "区间交易"],
+      "market_conditions": ["BULL_CHANNEL", "BEAR_CHANNEL"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T15:00:00",
+      "updated_at": "2025-01-17T15:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "BroadChannelStrategy",
+      "config_file": null
+    },
+    "measured_move_v1": {
+      "id": "measured_move_v1",
+      "name": "测量移动策略",
+      "description": "使用测量移动(Measured Move)计算价格目标。AB=CD形态，用于设定盈利目标。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [401, 405],
+          "slide_numbers": [],
+          "section": "Price Targets",
+          "original_name": "Measured Move",
+          "chinese_name": "测量移动",
+          "video_number": null
+        }
+      ],
+      "category": "target",
+      "tags": ["目标", "测量移动", "AB=CD"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.5,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T15:00:00",
+      "updated_at": "2025-01-17T15:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "MeasuredMoveStrategy",
+      "config_file": null
+    },
+    "ll_mtr_v1": {
+      "id": "ll_mtr_v1",
+      "name": "更低低点主要趋势反转策略",
+      "description": "空头趋势中检测更低低点(Lower Low)后出现反转信号，在强势多头突破时做多。测量缺口可能形成，60%概率获得至少1倍风险回报。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [131, 135],
+          "slide_numbers": [11, 12],
+          "section": "Video 39B - Trading MTR Bottoms",
+          "original_name": "Lower Low MTR",
+          "chinese_name": "更低低点主要趋势反转",
+          "video_number": 39
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "趋势反转", "MTR", "测量缺口"],
+      "market_conditions": ["BEAR_TREND"],
+      "timeframes": ["15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T16:00:00",
+      "updated_at": "2025-01-17T16:00:00",
+      "changelog": ["从进阶篇Video 39提取"],
+      "strategy_class": "LLMTRStrategy",
+      "config_file": null
+    },
+    "exhaustion_climax_v1": {
+      "id": "exhaustion_climax_v1",
+      "name": "衰竭型高潮策略",
+      "description": "趋势末期(20+K线后)检测最大的趋势K线，无影线大实体，通常是衰竭缺口而非测量缺口。对于空头趋势在支撑位做多，对于多头趋势在阻力位做空。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [376, 380],
+          "slide_numbers": [9],
+          "section": "Exhaustive Climax",
+          "original_name": "Exhaustive Sell/Buy Climax",
+          "chinese_name": "衰竭型高潮",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["反转", "高潮", "衰竭", "支撑阻力"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T16:00:00",
+      "updated_at": "2025-01-17T16:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "ExhaustionClimaxStrategy",
+      "config_file": null
+    },
+    "vacuum_test_v1": {
+      "id": "vacuum_test_v1",
+      "name": "真空测试策略",
+      "description": "买入/卖出真空测试前期高点或低点。每个买入高潮是阻力测试，每个卖出高潮是支撑测试。支撑/阻力类型越多，盈利反转概率越高。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [251, 255],
+          "slide_numbers": [18],
+          "section": "Support/Resistance Test",
+          "original_name": "Vacuum Test / Support-Resistance Test",
+          "chinese_name": "真空测试",
+          "video_number": null
+        }
+      ],
+      "category": "reversal",
+      "tags": ["支撑", "阻力", "测试", "高潮"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND", "TRADING_RANGE"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T16:00:00",
+      "updated_at": "2025-01-17T16:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "VacuumTestStrategy",
+      "config_file": null
+    },
+    "fomo_entry_v1": {
+      "id": "fomo_entry_v1",
+      "name": "趋势后期入场策略",
+      "description": "避免被震出趋势(FOMO)的入场策略。不要等待完美回调，使用Sell/Buy The Close方法在强势趋势K线收盘附近入场。接受宽止损或等待确认后缩窄止损。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [181, 185],
+          "slide_numbers": [12, 13, 14],
+          "section": "Video 40A - Entering Late in Trends",
+          "original_name": "FOMO Entry / Entering Late in Trends",
+          "chinese_name": "趋势后期入场",
+          "video_number": 40
+        }
+      ],
+      "category": "trend_following",
+      "tags": ["顺势", "FOMO", "后期入场"],
+      "market_conditions": ["BULL_TREND", "BEAR_TREND"],
+      "timeframes": ["5min", "15min", "1h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T16:00:00",
+      "updated_at": "2025-01-17T16:00:00",
+      "changelog": ["从进阶篇Video 40提取"],
+      "strategy_class": "FOMOEntryStrategy",
+      "config_file": null
+    },
+    "channel_profit_taking_v1": {
+      "id": "channel_profit_taking_v1",
+      "name": "通道获利了结策略",
+      "description": "在通道阶段与突破阶段采用不同策略。突破中在前高上方加仓；通道中在前高上方获利了结，然后等待回调再入场。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [441, 445],
+          "slide_numbers": [10],
+          "section": "Video 43B - Trading Tight Bull Channels",
+          "original_name": "Channel vs BO Phase Profit Taking",
+          "chinese_name": "通道获利了结",
+          "video_number": 43
+        }
+      ],
+      "category": "exit",
+      "tags": ["出场", "获利了结", "通道", "突破"],
+      "market_conditions": ["BULL_CHANNEL", "BEAR_CHANNEL"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T16:00:00",
+      "updated_at": "2025-01-17T16:00:00",
+      "changelog": ["从进阶篇Video 43提取"],
+      "strategy_class": "ChannelProfitTakingStrategy",
+      "config_file": null
+    },
+    "trendline_break_v1": {
+      "id": "trendline_break_v1",
+      "name": "趋势线突破策略",
+      "description": "通道开始跌破趋势线时，趋势正在减弱。形成更平坦的通道，最终变成交易区间。20根K线后趋势减弱，50%趋势恢复，50%趋势反转。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [486, 490],
+          "slide_numbers": [20, 21],
+          "section": "Channel Weakening",
+          "original_name": "Breaking Trend Line / Channel Weakening",
+          "chinese_name": "趋势线突破",
+          "video_number": null
+        }
+      ],
+      "category": "transition",
+      "tags": ["趋势线", "突破", "通道转换"],
+      "market_conditions": ["BULL_CHANNEL", "BEAR_CHANNEL"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.5,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T16:00:00",
+      "updated_at": "2025-01-17T16:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "TrendlineBreakStrategy",
+      "config_file": null
+    },
+    "triangle_v1": {
+      "id": "triangle_v1",
+      "name": "三角形策略",
+      "description": "在交易区间顶部的三角形形态做空第二次入场。LH MTR有40%概率向下波段。在交易区间底部反之做多。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [316, 320],
+          "slide_numbers": [8],
+          "section": "TR Triangle",
+          "original_name": "Triangle at TR Top/Bottom",
+          "chinese_name": "三角形",
+          "video_number": null
+        }
+      ],
+      "category": "range_trading",
+      "tags": ["三角形", "交易区间", "第二入场"],
+      "market_conditions": ["TRADING_RANGE"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T16:00:00",
+      "updated_at": "2025-01-17T16:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "TriangleStrategy",
+      "config_file": null
+    },
+    "tight_channel_evolution_v1": {
+      "id": "tight_channel_evolution_v1",
+      "name": "紧密通道演变策略",
+      "description": "紧密通道演变规律：25%会出现突破并形成更强趋势，75%会变得更平坦更宽泛并最终变成交易区间。根据演变阶段调整策略。",
+      "version": "1.0.0",
+      "status": "implemented",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（进阶篇）_37-52.pdf",
+          "page_range": [486, 490],
+          "slide_numbers": [22, 23],
+          "section": "Channel Evolution",
+          "original_name": "Tight Channel Evolution",
+          "chinese_name": "紧密通道演变",
+          "video_number": null
+        }
+      ],
+      "category": "transition",
+      "tags": ["通道", "演变", "25/75规则"],
+      "market_conditions": ["BULL_CHANNEL", "BEAR_CHANNEL"],
+      "timeframes": ["5min", "15min", "1h", "4h"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.55,
+      "risk_reward_ratio": 1.5,
+      "created_at": "2025-01-17T16:00:00",
+      "updated_at": "2025-01-17T16:00:00",
+      "changelog": ["从进阶篇提取"],
+      "strategy_class": "TightChannelEvolutionStrategy",
+      "config_file": null
     }
   }
 }

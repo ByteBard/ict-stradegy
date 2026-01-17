@@ -9,7 +9,7 @@
 from typing import List, Optional
 from ..core.candle import Candle
 from ..core.market_context import MarketContext, MarketState
-from ..core.signal import Signal, SignalType, SignalDirection, SignalStrength
+from ..core.signal import Signal, SignalType, SignalDirection, SignalStrength, generate_signal_id
 
 
 class ReversalDetector:
@@ -107,6 +107,7 @@ class ReversalDetector:
             return None
 
         return Signal(
+            id=generate_signal_id(SignalType.DOUBLE_BOTTOM, confirm_candle.timestamp),
             type=SignalType.DOUBLE_BOTTOM,
             direction=SignalDirection.LONG,
             strength=SignalStrength.STRONG,
@@ -156,6 +157,7 @@ class ReversalDetector:
             return None
 
         return Signal(
+            id=generate_signal_id(SignalType.DOUBLE_TOP, confirm_candle.timestamp),
             type=SignalType.DOUBLE_TOP,
             direction=SignalDirection.SHORT,
             strength=SignalStrength.STRONG,
@@ -195,6 +197,7 @@ class ReversalDetector:
                 # 最近的低点高于之前的低点
                 if lows[-1] > min(lows[:-1]) and recent[-1].is_bull and recent[-1].is_trend_bar():
                     return Signal(
+                        id=generate_signal_id(SignalType.MAJOR_BULL_REVERSAL, recent[-1].timestamp),
                         type=SignalType.MAJOR_BULL_REVERSAL,
                         direction=SignalDirection.LONG,
                         strength=SignalStrength.STRONG,
@@ -211,6 +214,7 @@ class ReversalDetector:
             if len(highs) >= 3:
                 if highs[-1] < max(highs[:-1]) and recent[-1].is_bear and recent[-1].is_trend_bar():
                     return Signal(
+                        id=generate_signal_id(SignalType.MAJOR_BEAR_REVERSAL, recent[-1].timestamp),
                         type=SignalType.MAJOR_BEAR_REVERSAL,
                         direction=SignalDirection.SHORT,
                         strength=SignalStrength.STRONG,

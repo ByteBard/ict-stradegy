@@ -9,7 +9,7 @@
 from typing import List, Optional
 from ..core.candle import Candle
 from ..core.market_context import MarketContext, MarketState
-from ..core.signal import Signal, SignalType, SignalDirection, SignalStrength
+from ..core.signal import Signal, SignalType, SignalDirection, SignalStrength, generate_signal_id
 
 
 class BreakoutDetector:
@@ -90,6 +90,7 @@ class BreakoutDetector:
                 strength = self._evaluate_breakout_strength(candles, i, resistance, is_bull=True)
 
                 return Signal(
+                    id=generate_signal_id(SignalType.BULL_BREAKOUT, curr.timestamp),
                     type=SignalType.BULL_BREAKOUT,
                     direction=SignalDirection.LONG,
                     strength=strength,
@@ -127,6 +128,7 @@ class BreakoutDetector:
                 strength = self._evaluate_breakout_strength(candles, i, support, is_bull=False)
 
                 return Signal(
+                    id=generate_signal_id(SignalType.BEAR_BREAKOUT, curr.timestamp),
                     type=SignalType.BEAR_BREAKOUT,
                     direction=SignalDirection.SHORT,
                     strength=strength,
@@ -188,6 +190,7 @@ class BreakoutDetector:
             # 多头突破失败: 价格跌回突破位以下
             if last.close < breakout_price and last.is_bear:
                 return Signal(
+                    id=generate_signal_id(SignalType.FAILED_BREAKOUT, last.timestamp),
                     type=SignalType.FAILED_BREAKOUT,
                     direction=SignalDirection.SHORT,
                     strength=SignalStrength.STRONG,
@@ -200,6 +203,7 @@ class BreakoutDetector:
             # 空头突破失败
             if last.close > breakout_price and last.is_bull:
                 return Signal(
+                    id=generate_signal_id(SignalType.FAILED_BREAKOUT, last.timestamp),
                     type=SignalType.FAILED_BREAKOUT,
                     direction=SignalDirection.LONG,
                     strength=SignalStrength.STRONG,

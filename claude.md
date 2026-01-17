@@ -154,25 +154,97 @@ results/ → 结果文件 (含strategy_id引用)
 - [x] 数据加载器 (`src/backtest/data_loader.py`)
 - [x] 绩效统计
 
-### 阶段5: 后续扩展 (待完成)
-- [ ] 更多策略 (突破策略、双底双顶策略)
-- [ ] 可视化模块
-- [ ] 实盘接口
-- [ ] 继续阅读PDF提取更多策略细节
+### 阶段5: 全书策略代码化 ✅ 完成 (2026-01-17)
 
-## 回测验证
+**已实现33个策略，覆盖基础篇+进阶篇全部核心内容:**
 
-首次回测结果 (500根K线, H2回调策略):
-- 交易次数: 12
-- 胜率: 75%
-- 盈亏比: 5.2
-- 总收益: +0.04%
+#### 回调策略 (2个)
+- H2PullbackStrategy - 多头趋势H2回调做多
+- L2PullbackStrategy - 空头趋势L2回调做空
 
-## 待读取页面
-- 基础篇: p021-655 (已切割, 待深入阅读)
-- 进阶篇: 待切割和阅读
+#### MTR反转策略 (3个)
+- HLMTRStrategy - Higher Low主要趋势反转
+- LHMTRStrategy - Lower High主要趋势反转
+- LLMTRStrategy - Lower Low主要趋势反转
+
+#### 趋势跟随策略 (4个)
+- AlwaysInLongStrategy - 始终持多
+- AlwaysInShortStrategy - 始终持空
+- BuyTheCloseStrategy - 收盘买入
+- SellTheCloseStrategy - 收盘卖出
+
+#### 高潮反转策略 (2个)
+- ClimaxReversalStrategy - 高潮反转
+- ExhaustionClimaxStrategy - 衰竭高潮反转
+
+#### 楔形反转策略 (2个)
+- WedgeReversalStrategy - 楔形反转
+- ParabolicWedgeStrategy - 抛物线楔形
+
+#### 突破策略 (2个)
+- TRBreakoutStrategy - 交易区间突破
+- BreakoutPullbackStrategy - 突破回调
+
+#### 通道策略 (3个)
+- TightChannelStrategy - 紧密通道
+- MicroChannelStrategy - 微通道
+- BroadChannelStrategy - 宽通道
+
+#### 双底/双顶策略 (3个)
+- DBHLMTRStrategy - 双底Higher Low MTR
+- DTLHMTRStrategy - 双顶Lower High MTR
+- HHMTRStrategy - Higher High MTR
+
+#### 交易区间策略 (3个)
+- SecondLegTrapStrategy - 第二腿陷阱
+- TriangleStrategy - 三角形态
+- BuyLowSellHighStrategy - 低买高卖
+
+#### 高级入场策略 (3个)
+- SecondSignalStrategy - 第二信号
+- FOMOEntryStrategy - FOMO入场
+- FinalFlagStrategy - 最终旗形
+
+#### 形态策略 (3个)
+- CupHandleStrategy - 杯柄形态
+- MeasuredMoveStrategy - 测量移动
+- VacuumTestStrategy - 真空测试
+
+#### 通道演变策略 (3个)
+- ChannelProfitTakingStrategy - 通道止盈
+- TrendlineBreakStrategy - 趋势线突破
+- TightChannelEvolutionStrategy - 紧密通道演变
+
+### 阶段6: 真实数据对接 (进行中)
+
+## 真实数据源
+
+### 可用数据 (C:\ProcessedData\)
+
+| 目录 | 说明 |
+|------|------|
+| main_continuous/ | **主连1分钟K线** (推荐) |
+| all_contracts/ | 所有合约数据 (按交易所分类) |
+| futures_l1_tick/ | L1 Tick数据 |
+| futures_l2_tick/ | L2 Tick数据 |
+
+### 主连数据详情
+
+- **格式**: Parquet
+- **周期**: 1分钟
+- **品种**: 93个
+- **时间范围**: 2012年 ~ 2025年11月
+- **字段**: date, open, high, low, close, volume, money, open_interest, symbol
+
+### 推荐回测品种
+
+1. AG (白银) - 168万根K线, 波动充足
+2. RB (螺纹钢) - 国内最活跃
+3. CU (铜) - 价格行为规范
+4. AU (黄金) - 趋势性好
 
 ## 技术栈
 - Python 3.13
 - PyPDF2 (PDF处理)
-- (可选) pandas, numpy, matplotlib
+- pandas, numpy (数据处理)
+- parquet (数据存储)

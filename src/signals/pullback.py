@@ -10,7 +10,7 @@
 from typing import List, Optional
 from ..core.candle import Candle
 from ..core.market_context import MarketContext, MarketState
-from ..core.signal import Signal, SignalType, SignalDirection, SignalStrength
+from ..core.signal import Signal, SignalType, SignalDirection, SignalStrength, generate_signal_id
 
 
 class PullbackDetector:
@@ -92,6 +92,7 @@ class PullbackDetector:
 
                 if signal_type:
                     signal = Signal(
+                        id=generate_signal_id(signal_type, curr.timestamp),
                         type=signal_type,
                         direction=SignalDirection.LONG,
                         strength=self._evaluate_h_strength(candles, i, context),
@@ -141,6 +142,7 @@ class PullbackDetector:
 
                 if signal_type:
                     signal = Signal(
+                        id=generate_signal_id(signal_type, curr.timestamp),
                         type=signal_type,
                         direction=SignalDirection.SHORT,
                         strength=self._evaluate_l_strength(candles, i, context),
