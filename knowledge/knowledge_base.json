@@ -1,0 +1,183 @@
+{
+  "version": "1.0",
+  "updated_at": "2025-01-17T12:00:00",
+  "total_entries": 8,
+  "entries": {
+    "basic_001_market_state": {
+      "id": "basic_001_market_state",
+      "type": "concept",
+      "title": "市场状态：趋势或交易区间",
+      "title_en": "Every Market: Always in Either Trend or Trading Range",
+      "content": "每个市场在任何时刻都处于两种状态之一：趋势(Trend)或交易区间(Trading Range)。通道(Channel)是趋势的较弱部分，最终会演变为交易区间。交易区间最终会突破，趋势可以恢复或反转。",
+      "key_points": [
+        "市场非此即彼：要么趋势，要么交易区间",
+        "通道是弱趋势，会演变为交易区间",
+        "交易区间最终会突破",
+        "突破后趋势可延续或反转"
+      ],
+      "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+      "slide_number": 4,
+      "page_number": 6,
+      "related_entries": ["basic_002_support_resistance"],
+      "strategy_ids": [],
+      "images": [],
+      "extracted_at": "2025-01-17T12:00:00",
+      "verified": true,
+      "notes": ""
+    },
+    "basic_002_support_resistance": {
+      "id": "basic_002_support_resistance",
+      "type": "concept",
+      "title": "支撑与阻力",
+      "title_en": "Support and Resistance",
+      "content": "支撑位：低于当前价格的区域，下跌可能暂停或反转。阻力位：高于当前价格的区域，上涨可能停滞或反转。",
+      "key_points": [
+        "支撑位在当前价格下方",
+        "阻力位在当前价格上方",
+        "价格在支撑/阻力附近可能反转",
+        "突破支撑/阻力后角色可能互换"
+      ],
+      "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+      "slide_number": 5,
+      "page_number": 7,
+      "related_entries": ["basic_003_breakout"],
+      "strategy_ids": [],
+      "images": [],
+      "extracted_at": "2025-01-17T12:00:00",
+      "verified": true,
+      "notes": ""
+    },
+    "basic_003_breakout": {
+      "id": "basic_003_breakout",
+      "type": "concept",
+      "title": "突破",
+      "title_en": "Breakout",
+      "content": "突破是价格超越支撑或阻力的行为。突破可能成功（形成趋势）或失败（恢复交易区间）。",
+      "key_points": [
+        "突破是价格超越关键位置",
+        "突破可能成功或失败",
+        "成功突破形成趋势",
+        "失败突破恢复交易区间"
+      ],
+      "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+      "slide_number": 6,
+      "page_number": 8,
+      "related_entries": ["basic_002_support_resistance"],
+      "strategy_ids": [],
+      "images": [],
+      "extracted_at": "2025-01-17T12:00:00",
+      "verified": true,
+      "notes": ""
+    },
+    "basic_004_candle_types": {
+      "id": "basic_004_candle_types",
+      "type": "concept",
+      "title": "K线类型：趋势K线与交易区间K线",
+      "title_en": "Two Types of Candles: Trend Bars and Trading Range Bars",
+      "content": "趋势K线(Trend Bar)：小影线，大实体，代表单K线趋势。交易区间K线(Doji)：大影线，小实体，代表单K线震荡。",
+      "key_points": [
+        "趋势K线=小影线+大实体",
+        "Doji=大影线+小实体",
+        "趋势K线是单K线趋势",
+        "Doji是单K线交易区间"
+      ],
+      "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+      "slide_number": 9,
+      "page_number": 11,
+      "related_entries": [],
+      "strategy_ids": [],
+      "images": [],
+      "extracted_at": "2025-01-17T12:00:00",
+      "verified": true,
+      "notes": ""
+    },
+    "basic_005_h2_pullback": {
+      "id": "basic_005_h2_pullback",
+      "type": "rule",
+      "title": "H2回调入场规则",
+      "title_en": "ABC Pullback in Bull Trend: High 2 Entry",
+      "content": "在多头趋势中，寻找H2(High 2)回调入场点。H2是第二次出现低于前一K线高点后又突破的情况。入场方式：在信号K线高点上方1个tick挂买入止损单。",
+      "key_points": [
+        "仅在多头趋势中使用",
+        "寻找H2(第二次回调)",
+        "在信号K线高点上方入场",
+        "使用买入止损单"
+      ],
+      "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+      "slide_number": 11,
+      "page_number": 13,
+      "related_entries": ["basic_006_l2_pullback"],
+      "strategy_ids": ["h2_pullback_v1"],
+      "images": [],
+      "extracted_at": "2025-01-17T12:00:00",
+      "verified": true,
+      "notes": "最基础的顺势入场方法"
+    },
+    "basic_006_l2_pullback": {
+      "id": "basic_006_l2_pullback",
+      "type": "rule",
+      "title": "L2回调入场规则",
+      "title_en": "ABC Pullback in Bear Trend: Low 2 Entry",
+      "content": "在空头趋势中，寻找L2(Low 2)回调入场点。入场方式：在信号K线低点下方1个tick挂卖出止损单。",
+      "key_points": [
+        "仅在空头趋势中使用",
+        "寻找L2(第二次反弹)",
+        "在信号K线低点下方入场",
+        "使用卖出止损单"
+      ],
+      "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+      "slide_number": 12,
+      "page_number": 14,
+      "related_entries": ["basic_005_h2_pullback"],
+      "strategy_ids": ["l2_pullback_v1"],
+      "images": [],
+      "extracted_at": "2025-01-17T12:00:00",
+      "verified": true,
+      "notes": ""
+    },
+    "basic_007_inside_outside_bar": {
+      "id": "basic_007_inside_outside_bar",
+      "type": "concept",
+      "title": "内包K线与外包K线",
+      "title_en": "Inside and Outside Bars",
+      "content": "内包K线(Inside Bar)：高低点都在前一K线范围内。外包K线(Outside Bar)：高低点都超出前一K线范围。",
+      "key_points": [
+        "内包K线的范围在前一K线内",
+        "外包K线的范围包含前一K线",
+        "内包K线代表市场犹豫",
+        "外包K线代表市场波动增加"
+      ],
+      "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+      "slide_number": 16,
+      "page_number": 18,
+      "related_entries": ["basic_004_candle_types"],
+      "strategy_ids": [],
+      "images": [],
+      "extracted_at": "2025-01-17T12:00:00",
+      "verified": true,
+      "notes": ""
+    },
+    "basic_008_scalp_swing": {
+      "id": "basic_008_scalp_swing",
+      "type": "concept",
+      "title": "刮头皮与波段交易",
+      "title_en": "Scalps and Swing Trades",
+      "content": "刮头皮(Scalp)：计划快速获利，通常在1-5根K线内退出。波段交易(Swing)：只要趋势持续就持有。",
+      "key_points": [
+        "Scalp=快进快出(1-5根K线)",
+        "Swing=持有到趋势结束",
+        "同一入场点可以Scalp或Swing",
+        "选择取决于市场条件和个人风格"
+      ],
+      "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+      "slide_number": 17,
+      "page_number": 19,
+      "related_entries": [],
+      "strategy_ids": [],
+      "images": [],
+      "extracted_at": "2025-01-17T12:00:00",
+      "verified": true,
+      "notes": ""
+    }
+  }
+}

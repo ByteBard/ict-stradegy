@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "updated_at": "2025-01-17T12:00:00",
+  "strategies": {
+    "h2_pullback_v1": {
+      "id": "h2_pullback_v1",
+      "name": "H2回调策略",
+      "description": "在多头趋势中，等待第二次回调(H2)后入场做多。这是Al Brooks价格行为学中最基础的顺势入场方法。",
+      "version": "1.0.0",
+      "status": "validated",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [11, 12],
+          "slide_numbers": [11, 12],
+          "section": "Video 1 - Terminology",
+          "original_name": "ABC Pullback in Bull Trend",
+          "chinese_name": "多头趋势中的ABC回调",
+          "video_number": 1
+        }
+      ],
+      "category": "pullback",
+      "tags": ["顺势", "回调", "入场", "基础"],
+      "market_conditions": ["BULL_TREND", "BULL_CHANNEL"],
+      "timeframes": ["5min", "15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T12:00:00",
+      "updated_at": "2025-01-17T12:00:00",
+      "changelog": ["初始版本"],
+      "strategy_class": "H2PullbackStrategy",
+      "config_file": "strategies/configs/h2_pullback.yaml"
+    },
+    "l2_pullback_v1": {
+      "id": "l2_pullback_v1",
+      "name": "L2回调策略",
+      "description": "在空头趋势中，等待第二次反弹(L2)后入场做空。",
+      "version": "1.0.0",
+      "status": "validated",
+      "sources": [
+        {
+          "pdf_name": "阿布价格行为学（基础篇）_01-36.pdf",
+          "page_range": [12, 12],
+          "slide_numbers": [12],
+          "section": "Video 1 - Terminology",
+          "original_name": "ABC Pullback in Bear Trend",
+          "chinese_name": "空头趋势中的ABC回调",
+          "video_number": 1
+        }
+      ],
+      "category": "pullback",
+      "tags": ["顺势", "回调", "入场", "基础"],
+      "market_conditions": ["BEAR_TREND", "BEAR_CHANNEL"],
+      "timeframes": ["5min", "15min", "1h", "4h", "daily"],
+      "recommended_risk": 0.01,
+      "win_rate_expectation": 0.6,
+      "risk_reward_ratio": 2.0,
+      "created_at": "2025-01-17T12:00:00",
+      "updated_at": "2025-01-17T12:00:00",
+      "changelog": ["初始版本"],
+      "strategy_class": "L2PullbackStrategy",
+      "config_file": "strategies/configs/l2_pullback.yaml"
+    }
+  }
+}

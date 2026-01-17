@@ -1,0 +1,67 @@
+# ===================
+# Python
+# ===================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# ===================
+# IDE
+# ===================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===================
+# PDF切割文件 (不同步到远端)
+# ===================
+docs/pdf_split/
+
+# 原始PDF文件 (太大，不同步)
+*.pdf
+
+# ===================
+# 回测结果 (可选择性同步)
+# ===================
+# results/
+
+# ===================
+# 临时文件
+# ===================
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# ===================
+# 敏感配置
+# ===================
+.env
+*.secret
+config/local.yaml
