@@ -1,0 +1,30 @@
+{
+  "strategy": "FOMOEntryStrategy",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 99820.42980000046,
+    "return": -179.57019999953627,
+    "return_pct": -0.17957019999953627
+  },
+  "trades": {
+    "total": 667,
+    "winning": 407,
+    "losing": 260,
+    "win_rate": 61.019490254872565,
+    "profit_factor": 0.8818481848184818,
+    "avg_win": 3.2825552825552826,
+    "avg_loss": -5.826923076923077,
+    "avg_trade": -0.2683658170914543
+  },
+  "risk": {
+    "max_drawdown_pct": 0.2304723144271876,
+    "sharpe_ratio": -15.552043025112228
+  },
+  "generated_at": "2026-01-17T17:10:30.864171"
+}

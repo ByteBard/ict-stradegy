@@ -1,0 +1,30 @@
+{
+  "strategy": "AIS_Final",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 100279.04800000013,
+    "return": 279.0480000001262,
+    "return_pct": 0.2790480000001262
+  },
+  "trades": {
+    "total": 496,
+    "winning": 292,
+    "losing": 204,
+    "win_rate": 58.87096774193549,
+    "profit_factor": 1.1240517626059794,
+    "avg_win": 8.626712328767123,
+    "avg_loss": -10.985294117647058,
+    "avg_trade": 0.5604838709677419
+  },
+  "risk": {
+    "max_drawdown_pct": 0.22756373712701441,
+    "sharpe_ratio": -9.675472859124685
+  },
+  "generated_at": "2026-01-17T18:51:22.655306"
+}

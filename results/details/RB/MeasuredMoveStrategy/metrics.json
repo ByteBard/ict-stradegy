@@ -1,0 +1,30 @@
+{
+  "strategy": "MeasuredMoveStrategy",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 99931.97000000002,
+    "return": -68.02999999998428,
+    "return_pct": -0.06802999999998428
+  },
+  "trades": {
+    "total": 37,
+    "winning": 10,
+    "losing": 27,
+    "win_rate": 27.027027027027028,
+    "profit_factor": 0.3761467889908257,
+    "avg_win": 4.1,
+    "avg_loss": -4.037037037037037,
+    "avg_trade": -1.837837837837838
+  },
+  "risk": {
+    "max_drawdown_pct": 0.0900077026768304,
+    "sharpe_ratio": -68.94118562551216
+  },
+  "generated_at": "2026-01-17T17:10:44.696693"
+}

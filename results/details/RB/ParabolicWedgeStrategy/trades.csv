@@ -1,0 +1,2 @@
+direction,entry_time,entry_price,exit_time,exit_price,size,pnl,pnl_percent,signal_type,exit_reason
+LONG,2024-03-01T14:47:00,3770.0,2024-03-01T14:49:00,3766.0,1.0,-4.0,-0.10610079575596816,WEDGE,止损触发

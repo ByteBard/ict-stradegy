@@ -1,0 +1,30 @@
+{
+  "strategy": "MicroChannelStrategy",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 98366.33720000241,
+    "return": -1633.66279999759,
+    "return_pct": -1.6336627999975901
+  },
+  "trades": {
+    "total": 3265,
+    "winning": 864,
+    "losing": 2401,
+    "win_rate": 26.4624808575804,
+    "profit_factor": 0.6718278705007038,
+    "avg_win": 3.8668981481481484,
+    "avg_loss": -2.07122032486464,
+    "avg_trade": -0.4998468606431853
+  },
+  "risk": {
+    "max_drawdown_pct": 1.6375929683329564,
+    "sharpe_ratio": -12.008931112383396
+  },
+  "generated_at": "2026-01-17T17:09:48.863012"
+}

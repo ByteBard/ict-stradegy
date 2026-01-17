@@ -1,0 +1,30 @@
+{
+  "strategy": "LLMTRStrategy",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 100000,
+    "return": 0,
+    "return_pct": 0.0
+  },
+  "trades": {
+    "total": 0,
+    "winning": 0,
+    "losing": 0,
+    "win_rate": 0,
+    "profit_factor": 0,
+    "avg_win": 0,
+    "avg_loss": 0,
+    "avg_trade": 0
+  },
+  "risk": {
+    "max_drawdown_pct": 0.0,
+    "sharpe_ratio": 0.0
+  },
+  "generated_at": "2026-01-17T17:08:53.647979"
+}

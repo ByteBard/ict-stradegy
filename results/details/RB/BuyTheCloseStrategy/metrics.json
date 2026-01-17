@@ -1,0 +1,30 @@
+{
+  "strategy": "BuyTheCloseStrategy",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 100015.99080000001,
+    "return": 15.990800000014133,
+    "return_pct": 0.015990800000014134
+  },
+  "trades": {
+    "total": 4,
+    "winning": 3,
+    "losing": 1,
+    "win_rate": 75.0,
+    "profit_factor": 2.066666666666667,
+    "avg_win": 10.333333333333334,
+    "avg_loss": -15.0,
+    "avg_trade": 4.0
+  },
+  "risk": {
+    "max_drawdown_pct": 0.014998351440948066,
+    "sharpe_ratio": -92.73976916376455
+  },
+  "generated_at": "2026-01-17T17:09:07.356832"
+}

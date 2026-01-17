@@ -1,0 +1,30 @@
+{
+  "strategy": "L2PullbackStrategy",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 99925.94439999998,
+    "return": -74.05560000002151,
+    "return_pct": -0.07405560000002152
+  },
+  "trades": {
+    "total": 26,
+    "winning": 9,
+    "losing": 17,
+    "win_rate": 34.61538461538461,
+    "profit_factor": 0.5795454545454546,
+    "avg_win": 11.333333333333334,
+    "avg_loss": -10.352941176470589,
+    "avg_trade": -2.8461538461538463
+  },
+  "risk": {
+    "max_drawdown_pct": 0.1070270000000164,
+    "sharpe_ratio": -33.33898996586748
+  },
+  "generated_at": "2026-01-17T17:08:40.022584"
+}

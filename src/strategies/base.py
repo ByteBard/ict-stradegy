@@ -191,10 +191,11 @@ class Strategy(ABC):
 
     def _open_position(self, signal: Signal, candle: Candle) -> Dict[str, Any]:
         """开仓"""
+        # 使用当前K线收盘价作为实际入场价 (signal.entry_price是触发阈值)
         position = Position(
             symbol="",  # 需要从外部设置
             direction="LONG" if signal.is_long else "SHORT",
-            entry_price=signal.entry_price or candle.close,
+            entry_price=candle.close,  # 实际成交价
             entry_time=candle.timestamp,
             size=1.0,  # 需要根据风险管理计算
             stop_loss=signal.stop_loss or 0,

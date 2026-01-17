@@ -1,0 +1,30 @@
+{
+  "strategy": "TightChannelEvolutionStrategy",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 99987.97120000004,
+    "return": -12.02879999995639,
+    "return_pct": -0.01202879999995639
+  },
+  "trades": {
+    "total": 19,
+    "winning": 11,
+    "losing": 8,
+    "win_rate": 57.89473684210527,
+    "profit_factor": 0.8461538461538461,
+    "avg_win": 6.0,
+    "avg_loss": -9.75,
+    "avg_trade": -0.631578947368421
+  },
+  "risk": {
+    "max_drawdown_pct": 0.039007150409702,
+    "sharpe_ratio": -51.39316571509936
+  },
+  "generated_at": "2026-01-17T17:11:04.148111"
+}

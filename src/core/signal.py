@@ -39,9 +39,17 @@ class SignalType(Enum):
     DOUBLE_TOP = auto()     # 双顶
     WEDGE = auto()          # 楔形
     TRIANGLE = auto()       # 三角形
+    FLAG = auto()           # 旗形
+    CUP_HANDLE = auto()     # 杯柄形态
+
+    # 通道信号
+    CHANNEL = auto()        # 通道
+    TRENDLINE = auto()      # 趋势线
 
     # 特殊信号
     MEASURED_MOVE = auto()  # 测量移动目标
+    CLIMAX = auto()         # 高潮
+    EXHAUSTION = auto()     # 衰竭
 
 
 class SignalDirection(Enum):

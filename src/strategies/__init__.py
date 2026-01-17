@@ -22,6 +22,10 @@ from .channel_evolution_strategy import (
     TrendlineBreakStrategy,
     TightChannelEvolutionStrategy,
 )
+from .optimized_ais_strategy import OptimizedAISStrategy, OptimizedAISStrategyV2
+from .optimized_ais_v3 import OptimizedAISV3, OptimizedAISV4
+from .optimized_ais_final import OptimizedAISFinal, OptimizedAISBest
+from .industrial_ais_strategy import IndustrialAISStrategy, IndustrialAISStrategyV2
 
 __all__ = [
     # 基类
@@ -74,4 +78,14 @@ __all__ = [
     "ChannelProfitTakingStrategy",
     "TrendlineBreakStrategy",
     "TightChannelEvolutionStrategy",
+    # 优化版AIS策略
+    "OptimizedAISStrategy",
+    "OptimizedAISStrategyV2",
+    "OptimizedAISV3",
+    "OptimizedAISV4",
+    "OptimizedAISFinal",
+    "OptimizedAISBest",
+    # 工业级AIS策略
+    "IndustrialAISStrategy",
+    "IndustrialAISStrategyV2",
 ]

@@ -1,0 +1,274 @@
+{
+  "instrument": "RB",
+  "period": {
+    "start": "2024-01-01",
+    "end": "2024-06-30"
+  },
+  "strategies": [
+    {
+      "name": "H2PullbackStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "L2PullbackStrategy",
+      "success": true,
+      "trades": 26,
+      "win_rate": 34.61538461538461,
+      "return_pct": -0.07405560000002152,
+      "profit_factor": 0.5795454545454546
+    },
+    {
+      "name": "HLMTRStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "LHMTRStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "LLMTRStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "AlwaysInLongStrategy",
+      "success": true,
+      "trades": 596,
+      "win_rate": 32.04697986577181,
+      "return_pct": -0.0658265999994619,
+      "profit_factor": 0.9690328727965698
+    },
+    {
+      "name": "AlwaysInShortStrategy",
+      "success": true,
+      "trades": 613,
+      "win_rate": 35.88907014681892,
+      "return_pct": 0.23517140000045766,
+      "profit_factor": 1.1116207951070338
+    },
+    {
+      "name": "BuyTheCloseStrategy",
+      "success": true,
+      "trades": 4,
+      "win_rate": 75.0,
+      "return_pct": 0.015990800000014134,
+      "profit_factor": 2.066666666666667
+    },
+    {
+      "name": "SellTheCloseStrategy",
+      "success": true,
+      "trades": 7,
+      "win_rate": 71.42857142857143,
+      "return_pct": 0.011993999999991501,
+      "profit_factor": 2.3333333333333335
+    },
+    {
+      "name": "ClimaxReversalStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "ExhaustionClimaxStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "WedgeReversalStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "ParabolicWedgeStrategy",
+      "success": true,
+      "trades": 1,
+      "win_rate": 0.0,
+      "return_pct": -0.004000799999994343,
+      "profit_factor": 0.0
+    },
+    {
+      "name": "TRBreakoutStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "BreakoutPullbackStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "TightChannelStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "MicroChannelStrategy",
+      "success": true,
+      "trades": 3265,
+      "win_rate": 26.4624808575804,
+      "return_pct": -1.6336627999975901,
+      "profit_factor": 0.6718278705007038
+    },
+    {
+      "name": "BroadChannelStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "DBHLMTRStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "DTLHMTRStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "HHMTRStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "SecondLegTrapStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "TriangleStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "BuyLowSellHighStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "SecondSignalStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "FOMOEntryStrategy",
+      "success": true,
+      "trades": 667,
+      "win_rate": 61.019490254872565,
+      "return_pct": -0.17957019999953627,
+      "profit_factor": 0.8818481848184818
+    },
+    {
+      "name": "FinalFlagStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "CupHandleStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "MeasuredMoveStrategy",
+      "success": true,
+      "trades": 37,
+      "win_rate": 27.027027027027028,
+      "return_pct": -0.06802999999998428,
+      "profit_factor": 0.3761467889908257
+    },
+    {
+      "name": "VacuumTestStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "ChannelProfitTakingStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "TrendlineBreakStrategy",
+      "success": true,
+      "trades": 0,
+      "win_rate": 0,
+      "return_pct": 0.0,
+      "profit_factor": 0
+    },
+    {
+      "name": "TightChannelEvolutionStrategy",
+      "success": true,
+      "trades": 19,
+      "win_rate": 57.89473684210527,
+      "return_pct": -0.01202879999995639,
+      "profit_factor": 0.8461538461538461
+    }
+  ],
+  "generated_at": "2026-01-17T17:11:04.184343"
+}

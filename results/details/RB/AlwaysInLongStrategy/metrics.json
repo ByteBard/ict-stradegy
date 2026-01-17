@@ -1,0 +1,30 @@
+{
+  "strategy": "AlwaysInLongStrategy",
+  "instrument": "RB",
+  "instrument_name": "螺纹钢",
+  "period": {
+    "start": "2024-01-02T09:01:00",
+    "end": "2024-06-28T23:00:00"
+  },
+  "capital": {
+    "initial": 100000,
+    "final": 99934.17340000054,
+    "return": -65.8265999994619,
+    "return_pct": -0.0658265999994619
+  },
+  "trades": {
+    "total": 596,
+    "winning": 191,
+    "losing": 405,
+    "win_rate": 32.04697986577181,
+    "profit_factor": 0.9690328727965698,
+    "avg_win": 10.649214659685864,
+    "avg_loss": -5.182716049382716,
+    "avg_trade": -0.10906040268456375
+  },
+  "risk": {
+    "max_drawdown_pct": 0.251265766293244,
+    "sharpe_ratio": -9.364338890511789
+  },
+  "generated_at": "2026-01-17T17:08:58.178879"
+}

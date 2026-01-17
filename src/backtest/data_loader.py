@@ -1,12 +1,19 @@
 """
 数据加载器
 
-支持从CSV、DataFrame等加载K线数据
+支持从CSV、Parquet、DataFrame等加载K线数据
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from pathlib import Path
 import csv
+
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
 
 from ..core.candle import Candle
 
@@ -100,6 +107,89 @@ class DataLoader:
             candles.append(candle)
 
         return candles
+
+    @staticmethod
+    def from_parquet(
+        filepath: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        date_column: str = "date",
+        open_col: str = "open",
+        high_col: str = "high",
+        low_col: str = "low",
+        close_col: str = "close",
+        volume_col: str = "volume"
+    ) -> List[Candle]:
+        """
+        从Parquet文件加载K线数据
+
+        Args:
+            filepath: Parquet文件路径
+            start_date: 开始日期 (格式: YYYY-MM-DD)
+            end_date: 结束日期 (格式: YYYY-MM-DD)
+            date_column: 时间列名
+            其他参数: 列名映射
+
+        Returns:
+            K线列表
+        """
+        if not HAS_PANDAS:
+            raise ImportError("需要安装pandas: pip install pandas pyarrow")
+
+        df = pd.read_parquet(filepath)
+
+        # 确保时间列是datetime类型
+        df[date_column] = pd.to_datetime(df[date_column])
+
+        # 时间过滤
+        if start_date:
+            df = df[df[date_column] >= pd.to_datetime(start_date)]
+        if end_date:
+            df = df[df[date_column] <= pd.to_datetime(end_date)]
+
+        # 按时间排序
+        df = df.sort_values(date_column).reset_index(drop=True)
+
+        # 转换为Candle对象
+        candles = []
+        for _, row in df.iterrows():
+            candle = Candle(
+                timestamp=row[date_column].to_pydatetime(),
+                open=float(row[open_col]),
+                high=float(row[high_col]),
+                low=float(row[low_col]),
+                close=float(row[close_col]),
+                volume=float(row.get(volume_col, 0))
+            )
+            candles.append(candle)
+
+        return candles
+
+    @staticmethod
+    def get_parquet_info(filepath: str) -> dict:
+        """
+        获取Parquet文件信息
+
+        Args:
+            filepath: Parquet文件路径
+
+        Returns:
+            包含数据范围、行数等信息的字典
+        """
+        if not HAS_PANDAS:
+            raise ImportError("需要安装pandas: pip install pandas pyarrow")
+
+        df = pd.read_parquet(filepath)
+        date_col = 'date' if 'date' in df.columns else df.columns[0]
+        df[date_col] = pd.to_datetime(df[date_col])
+
+        return {
+            "rows": len(df),
+            "columns": list(df.columns),
+            "start_date": df[date_col].min(),
+            "end_date": df[date_col].max(),
+            "file_size_mb": Path(filepath).stat().st_size / (1024 * 1024)
+        }
 
     @staticmethod
     def generate_sample_data(
