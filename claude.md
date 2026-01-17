@@ -58,36 +58,78 @@
 - **刮头皮 (Scalp)**: 1-5根K线内快速获利
 - **波段交易 (Swing)**: 持有至趋势结束
 
-## 项目结构
+## 项目结构 (重构后)
 
 ```
 ict-stradegy/
-├── claude.md              # 项目上下文文档
-├── requirements.txt       # Python依赖
+├── claude.md                 # 项目上下文文档
+├── requirements.txt          # Python依赖
+├── .gitignore               # Git忽略配置
+│
 ├── docs/
-│   └── pdf_split/        # 切割后的PDF文件
-│       ├── basic/        # 基础篇 (131个文件, 前655页)
-│       └── advanced/     # 进阶篇 (待切割)
+│   └── pdf_split/           # [不同步] 切割后的PDF文件
+│       ├── basic/           # 基础篇 (131个文件, 前655页)
+│       └── advanced/        # 进阶篇 (待切割)
+│
+├── knowledge/               # 知识库 (PDF→结构化知识)
+│   └── knowledge_base.json  # 知识条目 (带Slide/页码引用)
+│
+├── strategies/              # 策略注册表
+│   └── registry.json        # 策略元数据 (带来源追溯)
+│
+├── results/                 # [可选同步] 回测结果持久化
+│
 ├── tools/
-│   └── split_pdf.py      # PDF切割工具
+│   └── split_pdf.py         # PDF切割工具
+│
 ├── src/
-│   ├── core/             # 核心数据结构
-│   │   ├── candle.py     # K线类型和分类
-│   │   ├── market_context.py  # 市场状态分析
-│   │   └── signal.py     # 信号定义
-│   ├── signals/          # 信号识别模块
-│   │   ├── pullback.py   # H1/H2/L1/L2回调
-│   │   ├── breakout.py   # 突破信号
-│   │   └── reversal.py   # 反转信号
-│   ├── strategies/       # 策略实现
-│   │   ├── base.py       # 策略基类
+│   ├── core/                # 核心数据结构
+│   │   ├── candle.py        # K线类型和分类
+│   │   ├── market_context.py # 市场状态分析
+│   │   └── signal.py        # 信号定义 (含市场快照+决策链)
+│   │
+│   ├── registry/            # [新增] 可追溯性模块
+│   │   ├── strategy_registry.py  # 策略注册表
+│   │   └── knowledge_base.py     # 知识库管理
+│   │
+│   ├── signals/             # 信号识别模块
+│   │   ├── pullback.py      # H1/H2/L1/L2回调
+│   │   ├── breakout.py      # 突破信号
+│   │   └── reversal.py      # 反转信号
+│   │
+│   ├── strategies/          # 策略实现
+│   │   ├── base.py          # 策略基类
 │   │   └── pullback_strategy.py  # H2/L2回调策略
-│   └── backtest/         # 回测框架
-│       ├── engine.py     # 回测引擎
-│       └── data_loader.py # 数据加载器
+│   │
+│   └── backtest/            # 回测框架
+│       ├── engine.py        # 回测引擎
+│       ├── data_loader.py   # 数据加载器
+│       └── result_store.py  # [新增] 结果持久化
+│
 └── examples/
     └── example_backtest.py  # 回测示例
 ```
+
+## 可追溯性设计
+
+### 知识→代码 追溯链
+```
+PDF Slide 11-12 (ABC Pullback)
+    ↓ 提取
+knowledge_base.json → entry: "basic_005_h2_pullback"
+    ↓ 关联
+registry.json → strategy: "h2_pullback_v1" (sources: Slide 11-12)
+    ↓ 实现
+src/strategies/pullback_strategy.py → class H2PullbackStrategy
+    ↓ 回测
+results/ → 结果文件 (含strategy_id引用)
+```
+
+### Signal 完整追踪
+每个信号包含：
+- `market_snapshot`: 产生信号时的完整市场状态
+- `decision_reason`: 触发规则和满足条件
+- `knowledge_refs`: 关联的知识条目ID
 
 ## 代码化进度
 
