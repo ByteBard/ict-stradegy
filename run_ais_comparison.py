@@ -30,6 +30,8 @@ from src.strategies import (
     OptimizedAISBest,
     IndustrialAISStrategy,
     IndustrialAISStrategyV2,
+    AdvancedAISStrategy,
+    AdvancedAISStrategyV2,
 )
 
 
@@ -44,6 +46,8 @@ AIS_STRATEGIES = [
     (OptimizedAISBest, "AIS_Best"),
     (IndustrialAISStrategy, "AIS_工业级"),
     (IndustrialAISStrategyV2, "AIS_工业级V2"),
+    (AdvancedAISStrategy, "AIS_高级版"),
+    (AdvancedAISStrategyV2, "AIS_高级版V2"),
 ]
 
 
