@@ -27,6 +27,7 @@ from .optimized_ais_v3 import OptimizedAISV3, OptimizedAISV4
 from .optimized_ais_final import OptimizedAISFinal, OptimizedAISBest
 from .industrial_ais_strategy import IndustrialAISStrategy, IndustrialAISStrategyV2
 from .advanced_ais_strategy import AdvancedAISStrategy, AdvancedAISStrategyV2
+from .lstm_ais_strategy import LSTMAISStrategy, LSTMAISConfig, OriginalAISStrategy
 
 __all__ = [
     # 基类
@@ -92,4 +93,8 @@ __all__ = [
     # 高级AIS策略
     "AdvancedAISStrategy",
     "AdvancedAISStrategyV2",
+    # LSTM-AIS策略
+    "LSTMAISStrategy",
+    "LSTMAISConfig",
+    "OriginalAISStrategy",
 ]
