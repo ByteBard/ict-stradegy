@@ -26,6 +26,7 @@ import traceback
 from src.core.candle import Candle
 from src.features.intraday_feature_extractor import IntradayFeatureExtractor
 from src.models.data_preparation import load_candles_from_parquet
+from src.backtest.state_machine import run_backtest
 
 # 随机种子
 RANDOM_SEED = 42
@@ -35,8 +36,9 @@ torch.manual_seed(RANDOM_SEED)
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # 策略参数
-COMMISSION = 0.00005
+COMMISSION = 0.00011
 SLIPPAGE = 0.0001
+COST_PER_SIDE = COMMISSION + SLIPPAGE  # 0.00021
 PROBE_SIZE = 0.3
 FULL_SIZE = 1.0
 TRAIL_DD = 0.30
@@ -138,8 +140,10 @@ def create_sequences(X: np.ndarray, seq_len: int) -> np.ndarray:
 
 
 def get_cache_key(symbol: str, train_months: List[str]) -> str:
-    months_str = '_'.join(sorted(train_months[-6:]))  # 只用最后6个月作为key
-    key = f"ict_{symbol}_lstm_{months_str}_seed{RANDOM_SEED}"
+    # 用首尾月份+数量作为key，避免字符串过长
+    first_month = train_months[0] if train_months else ''
+    last_month = train_months[-1] if train_months else ''
+    key = f"ict_{symbol}_lstm_{first_month}_{last_month}_n{len(train_months)}_seed{RANDOM_SEED}"
     return hashlib.md5(key.encode()).hexdigest()[:16]
 
 
@@ -209,137 +213,6 @@ def predict_lstm(model, X_test: np.ndarray, scaler: dict) -> np.ndarray:
     return full_pred
 
 
-def run_state_machine_backtest(
-    candles: List[Candle],
-    predictions: np.ndarray,
-    rsi: np.ndarray,
-    params: dict,
-    contract_multiplier: float = 10.0
-) -> Dict:
-    sl = params.get('sl', 0.004)
-    tp = params.get('tp', 0.012)
-    rsi_upper = params.get('rsi_upper', 55)
-    rsi_lower = params.get('rsi_lower', 45)
-    threshold = params.get('threshold', 0.5)
-
-    probe_sl = sl
-    probe_to_full = sl
-    full_sl = sl + 0.001
-    full_to_trail = sl + 0.002
-    trail_max = tp
-
-    signals = np.zeros(len(predictions))
-    signals[predictions > threshold] = 1
-    signals[predictions < (1 - threshold)] = -1
-
-    if rsi_upper is not None:
-        signals[(rsi > rsi_upper) & (signals == 1)] = 0
-    if rsi_lower is not None:
-        signals[(rsi < rsi_lower) & (signals == -1)] = 0
-
-    state = 'Flat'
-    direction = 0
-    entry_price = 0
-    position_size = 0
-    peak_profit = 0
-    pending_signal = 0
-    trades = []
-
-    for i in range(SEQ_LEN + 30, len(candles) - 1):
-        sig = signals[i]
-        c = candles[i]
-        price = c.close
-        high = c.high
-        low = c.low
-
-        if state == 'Flat' and pending_signal != 0:
-            state = 'Probe'
-            direction = pending_signal
-            position_size = PROBE_SIZE
-            entry_cost = COMMISSION + SLIPPAGE
-            entry_price = price * (1 + entry_cost if direction == 1 else 1 - entry_cost)
-            pending_signal = 0
-            continue
-
-        if state != 'Flat':
-            if direction == 1:
-                current_pnl = (price - entry_price) / entry_price
-                max_pnl = (high - entry_price) / entry_price
-                min_pnl = (low - entry_price) / entry_price
-            else:
-                current_pnl = (entry_price - price) / entry_price
-                max_pnl = (entry_price - low) / entry_price
-                min_pnl = (entry_price - high) / entry_price
-
-            exit_trade = False
-            exit_pnl = None
-
-            if state == 'Probe':
-                if max_pnl >= probe_to_full:
-                    state = 'Full'
-                    position_size = FULL_SIZE
-                elif min_pnl <= -probe_sl:
-                    exit_trade = True
-                    exit_pnl = -probe_sl
-                elif pending_signal != 0 and pending_signal != direction:
-                    exit_trade = True
-                    exit_pnl = current_pnl
-
-            elif state == 'Full':
-                if max_pnl >= full_to_trail:
-                    state = 'Trail'
-                    peak_profit = max_pnl
-                elif min_pnl <= -full_sl:
-                    exit_trade = True
-                    exit_pnl = -full_sl
-                elif pending_signal != 0 and pending_signal != direction:
-                    exit_trade = True
-                    exit_pnl = current_pnl
-
-            elif state == 'Trail':
-                if max_pnl > peak_profit:
-                    peak_profit = max_pnl
-                if max_pnl >= trail_max:
-                    exit_trade = True
-                    exit_pnl = trail_max
-                elif current_pnl < peak_profit * (1 - TRAIL_DD):
-                    exit_trade = True
-                    exit_pnl = current_pnl
-                elif pending_signal != 0 and pending_signal != direction:
-                    exit_trade = True
-                    exit_pnl = current_pnl
-
-            if exit_trade:
-                exit_cost = COMMISSION + SLIPPAGE
-                trade_return = exit_pnl * position_size - exit_cost * position_size
-                pnl_money = trade_return * entry_price * contract_multiplier
-                trades.append({
-                    'pnl_pct': trade_return,
-                    'pnl_money': pnl_money,
-                    'is_win': exit_pnl > 0,
-                })
-                state = 'Flat'
-                direction = 0
-                position_size = 0
-                entry_price = 0
-                peak_profit = 0
-                if exit_pnl in [-probe_sl, -full_sl, trail_max]:
-                    pending_signal = 0
-
-        if state == 'Flat' and sig != 0:
-            pending_signal = sig
-
-    if not trades:
-        return {'trades': 0, 'wins': 0, 'pnl': 0, 'return_pct': 0}
-
-    return {
-        'trades': len(trades),
-        'wins': sum(1 for t in trades if t['is_win']),
-        'pnl': sum(t['pnl_money'] for t in trades),
-        'return_pct': sum(t['pnl_pct'] for t in trades),
-    }
-
-
 def run_symbol_backtest(symbol: str, data_dir: Path) -> Dict:
     """运行单个品种的回测"""
     config = KEY_SYMBOLS.get(symbol)
@@ -406,7 +279,7 @@ def run_symbol_backtest(symbol: str, data_dir: Path) -> Dict:
         for i in range(MIN_TRAIN_MONTHS, len(available_months)):
             test_month = available_months[i]
             train_months = available_months[:i]
-            train_months_use = train_months[-6:]  # 最多用6个月训练 (加速)
+            train_months_use = train_months  # 全部累积训练
 
             train_X = []
             train_y = []
@@ -431,10 +304,11 @@ def run_symbol_backtest(symbol: str, data_dir: Path) -> Dict:
             rsi_test = rsi_by_month[test_month]
             predictions = predict_lstm(model, X_test, scaler)
 
-            result = run_state_machine_backtest(
-                test_candles, predictions, rsi_test,
-                params, contract_multiplier=multiplier
-            )
+            result = run_backtest(
+                test_candles, predictions, rsi_test, params,
+                contract_multiplier=multiplier,
+                probe_size=PROBE_SIZE, full_size=FULL_SIZE, trail_dd=TRAIL_DD,
+                commission=COST_PER_SIDE)
 
             year = test_month[:4]
             yearly_results[year]['trades'] += result['trades']
