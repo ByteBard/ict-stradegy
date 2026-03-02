@@ -1205,6 +1205,109 @@ if HAS_NUMBA:
     _backtest_trail_jit(_d3, _d3, _d3 + 0.5, _d3 - 0.5, _s3,
                         0.01, 0.005, 0.5, 0.00021, 100)
 
+    @numba.njit(cache=True)
+    def _backtest_trail_dynamic_jit(
+        opens, closes, highs, lows, signals, atr_arr,
+        sl_mult, ta_mult, trail_dd, commission, max_hold,
+    ):
+        """
+        Trail stop with dynamic ATR-based SL and trail activation.
+        - sl = sl_mult * atr_arr[entry_idx] / entry_price
+        - trail_activate = ta_mult * atr_arr[entry_idx] / entry_price
+        - trail_dd and max_hold remain fixed
+        """
+        n = len(closes)
+        state = 0
+        entry_price = 0.0
+        entry_idx = 0
+        peak_profit = 0.0
+        trailing_active = False
+        sl = 0.0
+        trail_activate = 0.0
+
+        total_return = 0.0
+        total_pnl_pts = 0.0
+        n_trades = 0
+        n_wins = 0
+        pending = 0
+
+        for idx in range(n):
+            if state == 0 and pending != 0:
+                state = pending
+                entry_price = opens[idx]
+                entry_idx = idx
+                peak_profit = 0.0
+                trailing_active = False
+                # Dynamic SL based on ATR at entry
+                atr_at_entry = atr_arr[idx]
+                if atr_at_entry > 0 and entry_price > 0:
+                    sl = sl_mult * atr_at_entry / entry_price
+                    trail_activate = ta_mult * atr_at_entry / entry_price
+                else:
+                    sl = sl_mult * 0.01  # fallback
+                    trail_activate = ta_mult * 0.01
+                total_return -= commission
+                n_trades += 1
+                pending = 0
+
+            if state != 0:
+                if state == 1:
+                    max_pnl = (highs[idx] - entry_price) / entry_price
+                    min_pnl = (lows[idx] - entry_price) / entry_price
+                    cur_pnl = (closes[idx] - entry_price) / entry_price
+                else:
+                    max_pnl = (entry_price - lows[idx]) / entry_price
+                    min_pnl = (entry_price - highs[idx]) / entry_price
+                    cur_pnl = (entry_price - closes[idx]) / entry_price
+
+                if max_pnl > peak_profit:
+                    peak_profit = max_pnl
+
+                if not trailing_active and peak_profit >= trail_activate:
+                    trailing_active = True
+
+                exit_trade = False
+                exit_pnl = 0.0
+
+                if min_pnl <= -sl:
+                    exit_trade = True
+                    exit_pnl = -sl
+                elif trailing_active:
+                    trail_stop = peak_profit * (1.0 - trail_dd)
+                    if trail_stop < 0:
+                        trail_stop = 0.0
+                    if cur_pnl <= trail_stop:
+                        exit_trade = True
+                        exit_pnl = cur_pnl
+
+                if not exit_trade and (idx - entry_idx) >= max_hold:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+                if not exit_trade and idx == n - 1:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+                if exit_trade:
+                    total_return += exit_pnl - commission
+                    total_pnl_pts += exit_pnl * entry_price
+                    if exit_pnl > 0:
+                        n_wins += 1
+                    state = 0
+                    entry_price = 0.0
+                    peak_profit = 0.0
+                    trailing_active = False
+
+            if state == 0 and signals[idx] != 0:
+                pending = signals[idx]
+
+        return total_return, n_trades, n_wins, total_pnl_pts
+
+    # Warmup dynamic
+    _atr3 = np.array([1.0, 1.0, 1.0], dtype=np.float64)
+    _backtest_trail_dynamic_jit(_d3, _d3, _d3 + 0.5, _d3 - 0.5, _s3, _atr3,
+                                2.0, 1.0, 0.5, 0.00021, 100)
+
 
 def backtest_trail(
     opens: np.ndarray,
@@ -1259,6 +1362,129 @@ def backtest_trail(
             entry_idx = idx
             peak_profit = 0.0
             trailing_active = False
+            total_return -= commission
+            n_trades += 1
+            pending = 0
+
+        if state != 0:
+            if state == 1:
+                max_pnl = (highs[idx] - entry_price) / entry_price
+                min_pnl = (lows[idx] - entry_price) / entry_price
+                cur_pnl = (closes[idx] - entry_price) / entry_price
+            else:
+                max_pnl = (entry_price - lows[idx]) / entry_price
+                min_pnl = (entry_price - highs[idx]) / entry_price
+                cur_pnl = (entry_price - closes[idx]) / entry_price
+
+            if max_pnl > peak_profit:
+                peak_profit = max_pnl
+
+            if not trailing_active and peak_profit >= trail_activate:
+                trailing_active = True
+
+            exit_trade = False
+            exit_pnl = 0.0
+
+            if min_pnl <= -sl:
+                exit_trade = True
+                exit_pnl = -sl
+            elif trailing_active:
+                trail_stop = peak_profit * (1.0 - trail_dd)
+                if trail_stop < 0:
+                    trail_stop = 0.0
+                if cur_pnl <= trail_stop:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+            if not exit_trade and (idx - entry_idx) >= max_hold:
+                exit_trade = True
+                exit_pnl = cur_pnl
+
+            if not exit_trade and idx == n - 1:
+                exit_trade = True
+                exit_pnl = cur_pnl
+
+            if exit_trade:
+                total_return += exit_pnl - commission
+                total_pnl_pts += exit_pnl * entry_price
+                if exit_pnl > 0:
+                    n_wins += 1
+                state = 0
+                entry_price = 0.0
+                peak_profit = 0.0
+                trailing_active = False
+
+        if state == 0 and signals[idx] != 0:
+            pending = signals[idx]
+
+    return total_return, n_trades, n_wins, total_pnl_pts
+
+
+def backtest_trail_dynamic(
+    opens: np.ndarray,
+    closes: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    signals: np.ndarray,
+    atr_arr: np.ndarray,
+    sl_mult: float = 2.0,
+    ta_mult: float = 1.0,
+    trail_dd: float = 0.5,
+    commission: float = 0.00021,
+    max_hold: int = 500,
+) -> Tuple[float, int, int, float]:
+    """
+    Trail stop with dynamic ATR-based SL. Enter at next bar's OPEN.
+
+    Parameters
+    ----------
+    atr_arr : per-bar ATR values (absolute, not normalized)
+    sl_mult : SL = sl_mult * ATR / entry_price
+    ta_mult : trail_activate = ta_mult * ATR / entry_price
+    trail_dd : trailing drawdown fraction from peak
+    max_hold : safety net max bars
+
+    Returns (total_return, n_trades, n_wins, total_pnl_pts)
+    """
+    if HAS_NUMBA:
+        return _backtest_trail_dynamic_jit(
+            np.asarray(opens, dtype=np.float64),
+            np.asarray(closes, dtype=np.float64),
+            np.asarray(highs, dtype=np.float64),
+            np.asarray(lows, dtype=np.float64),
+            np.asarray(signals, dtype=np.int32),
+            np.asarray(atr_arr, dtype=np.float64),
+            sl_mult, ta_mult, trail_dd, commission, max_hold)
+
+    # Pure Python fallback
+    n = len(closes)
+    state = 0
+    entry_price = 0.0
+    entry_idx = 0
+    peak_profit = 0.0
+    trailing_active = False
+    sl = 0.0
+    trail_activate = 0.0
+    total_return = 0.0
+    total_pnl_pts = 0.0
+    n_trades = 0
+    n_wins = 0
+    pending = 0
+
+    for idx in range(n):
+        if state == 0 and pending != 0:
+            state = pending
+            entry_price = opens[idx]
+            entry_idx = idx
+            peak_profit = 0.0
+            trailing_active = False
+            atr_at_entry = atr_arr[idx]
+            if atr_at_entry > 0 and entry_price > 0:
+                sl = sl_mult * atr_at_entry / entry_price
+                trail_activate = ta_mult * atr_at_entry / entry_price
+            else:
+                sl = sl_mult * 0.01
+                trail_activate = ta_mult * 0.01
             total_return -= commission
             n_trades += 1
             pending = 0
@@ -1511,4 +1737,646 @@ def backtest_atr(
         if state == 0 and signals[idx] != 0:
             pending = signals[idx]
 
+    return total_return, n_trades, n_wins, total_pnl_pts
+
+
+# ---------------------------------------------------------------------------
+# Trend-following exit modes (Mode 5-8)
+# ---------------------------------------------------------------------------
+
+if HAS_NUMBA:
+    @numba.njit(cache=True)
+    def _backtest_trend_choch_jit(
+        opens, closes, highs, lows, signals,
+        choch_up, choch_down,
+        sl, min_hold, max_hold, commission,
+    ):
+        """Mode 5: CHOCH Exit — hold until Change of Character triggers exit."""
+        n = len(closes)
+        state = 0
+        entry_price = 0.0
+        entry_idx = 0
+        total_return = 0.0
+        total_pnl_pts = 0.0
+        n_trades = 0
+        n_wins = 0
+        pending = 0
+
+        for idx in range(n):
+            if state == 0 and pending != 0:
+                state = pending
+                entry_price = opens[idx]
+                entry_idx = idx
+                total_return -= commission
+                n_trades += 1
+                pending = 0
+
+            if state != 0:
+                if state == 1:
+                    min_pnl = (lows[idx] - entry_price) / entry_price
+                    cur_pnl = (closes[idx] - entry_price) / entry_price
+                else:
+                    min_pnl = (entry_price - highs[idx]) / entry_price
+                    cur_pnl = (entry_price - closes[idx]) / entry_price
+
+                exit_trade = False
+                exit_pnl = 0.0
+                bars_held = idx - entry_idx
+
+                if min_pnl <= -sl:
+                    exit_trade = True
+                    exit_pnl = -sl
+                elif bars_held >= min_hold:
+                    if state == 1 and choch_down[idx] == 1:
+                        exit_trade = True
+                        exit_pnl = cur_pnl
+                    elif state == -1 and choch_up[idx] == 1:
+                        exit_trade = True
+                        exit_pnl = cur_pnl
+
+                if not exit_trade and bars_held >= max_hold:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+                if not exit_trade and idx == n - 1:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+                if exit_trade:
+                    total_return += exit_pnl - commission
+                    total_pnl_pts += exit_pnl * entry_price
+                    if exit_pnl > 0:
+                        n_wins += 1
+                    state = 0
+                    entry_price = 0.0
+
+            if state == 0 and signals[idx] != 0:
+                pending = signals[idx]
+
+        return total_return, n_trades, n_wins, total_pnl_pts
+
+    @numba.njit(cache=True)
+    def _backtest_trend_swing_jit(
+        opens, closes, highs, lows, signals,
+        last_sh_price, last_sl_price,
+        sl, swing_buffer, max_hold, commission,
+    ):
+        """Mode 6: Swing Trailing — structural swing points as trailing stop."""
+        n = len(closes)
+        state = 0
+        entry_price = 0.0
+        entry_idx = 0
+        trail_sl_price = 0.0
+
+        total_return = 0.0
+        total_pnl_pts = 0.0
+        n_trades = 0
+        n_wins = 0
+        pending = 0
+
+        for idx in range(n):
+            if state == 0 and pending != 0:
+                state = pending
+                entry_price = opens[idx]
+                entry_idx = idx
+                if state == 1:
+                    trail_sl_price = entry_price * (1.0 - sl)
+                else:
+                    trail_sl_price = entry_price * (1.0 + sl)
+                total_return -= commission
+                n_trades += 1
+                pending = 0
+
+            if state != 0:
+                if state == 1:
+                    sl_val = last_sl_price[idx]
+                    if sl_val == sl_val:  # not NaN
+                        new_sl = sl_val * (1.0 - swing_buffer)
+                        if new_sl > trail_sl_price:
+                            trail_sl_price = new_sl
+                    if lows[idx] <= trail_sl_price:
+                        exit_pnl = (trail_sl_price - entry_price) / entry_price
+                        total_return += exit_pnl - commission
+                        total_pnl_pts += exit_pnl * entry_price
+                        if exit_pnl > 0:
+                            n_wins += 1
+                        state = 0
+                        entry_price = 0.0
+                    else:
+                        cur_pnl = (closes[idx] - entry_price) / entry_price
+                        bars_held = idx - entry_idx
+                        if bars_held >= max_hold or idx == n - 1:
+                            total_return += cur_pnl - commission
+                            total_pnl_pts += cur_pnl * entry_price
+                            if cur_pnl > 0:
+                                n_wins += 1
+                            state = 0
+                            entry_price = 0.0
+                else:
+                    sh_val = last_sh_price[idx]
+                    if sh_val == sh_val:  # not NaN
+                        new_sl = sh_val * (1.0 + swing_buffer)
+                        if new_sl < trail_sl_price:
+                            trail_sl_price = new_sl
+                    if highs[idx] >= trail_sl_price:
+                        exit_pnl = (entry_price - trail_sl_price) / entry_price
+                        total_return += exit_pnl - commission
+                        total_pnl_pts += exit_pnl * entry_price
+                        if exit_pnl > 0:
+                            n_wins += 1
+                        state = 0
+                        entry_price = 0.0
+                    else:
+                        cur_pnl = (entry_price - closes[idx]) / entry_price
+                        bars_held = idx - entry_idx
+                        if bars_held >= max_hold or idx == n - 1:
+                            total_return += cur_pnl - commission
+                            total_pnl_pts += cur_pnl * entry_price
+                            if cur_pnl > 0:
+                                n_wins += 1
+                            state = 0
+                            entry_price = 0.0
+
+            if state == 0 and signals[idx] != 0:
+                pending = signals[idx]
+
+        return total_return, n_trades, n_wins, total_pnl_pts
+
+    @numba.njit(cache=True)
+    def _backtest_trend_state_jit(
+        opens, closes, highs, lows, signals,
+        trend,
+        sl, exit_on_neutral, min_hold, max_hold, commission,
+    ):
+        """Mode 7: Trend-State Hold — stay in while trend matches direction."""
+        n = len(closes)
+        state = 0
+        entry_price = 0.0
+        entry_idx = 0
+        total_return = 0.0
+        total_pnl_pts = 0.0
+        n_trades = 0
+        n_wins = 0
+        pending = 0
+
+        for idx in range(n):
+            if state == 0 and pending != 0:
+                state = pending
+                entry_price = opens[idx]
+                entry_idx = idx
+                total_return -= commission
+                n_trades += 1
+                pending = 0
+
+            if state != 0:
+                if state == 1:
+                    min_pnl = (lows[idx] - entry_price) / entry_price
+                    cur_pnl = (closes[idx] - entry_price) / entry_price
+                else:
+                    min_pnl = (entry_price - highs[idx]) / entry_price
+                    cur_pnl = (entry_price - closes[idx]) / entry_price
+
+                exit_trade = False
+                exit_pnl = 0.0
+                bars_held = idx - entry_idx
+
+                if min_pnl <= -sl:
+                    exit_trade = True
+                    exit_pnl = -sl
+                elif bars_held >= min_hold:
+                    if exit_on_neutral == 1:
+                        if state == 1 and trend[idx] != 1:
+                            exit_trade = True
+                            exit_pnl = cur_pnl
+                        elif state == -1 and trend[idx] != -1:
+                            exit_trade = True
+                            exit_pnl = cur_pnl
+                    else:
+                        if state == 1 and trend[idx] == -1:
+                            exit_trade = True
+                            exit_pnl = cur_pnl
+                        elif state == -1 and trend[idx] == 1:
+                            exit_trade = True
+                            exit_pnl = cur_pnl
+
+                if not exit_trade and bars_held >= max_hold:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+                if not exit_trade and idx == n - 1:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+                if exit_trade:
+                    total_return += exit_pnl - commission
+                    total_pnl_pts += exit_pnl * entry_price
+                    if exit_pnl > 0:
+                        n_wins += 1
+                    state = 0
+                    entry_price = 0.0
+
+            if state == 0 and signals[idx] != 0:
+                pending = signals[idx]
+
+        return total_return, n_trades, n_wins, total_pnl_pts
+
+    @numba.njit(cache=True)
+    def _backtest_trend_hybrid_jit(
+        opens, closes, highs, lows, signals,
+        choch_up, choch_down, last_sh_price, last_sl_price,
+        sl, swing_buffer, min_hold, max_hold, commission,
+    ):
+        """Mode 8: Hybrid — Swing trailing + CHOCH exit, whichever fires first."""
+        n = len(closes)
+        state = 0
+        entry_price = 0.0
+        entry_idx = 0
+        trail_sl_price = 0.0
+
+        total_return = 0.0
+        total_pnl_pts = 0.0
+        n_trades = 0
+        n_wins = 0
+        pending = 0
+
+        for idx in range(n):
+            if state == 0 and pending != 0:
+                state = pending
+                entry_price = opens[idx]
+                entry_idx = idx
+                if state == 1:
+                    trail_sl_price = entry_price * (1.0 - sl)
+                else:
+                    trail_sl_price = entry_price * (1.0 + sl)
+                total_return -= commission
+                n_trades += 1
+                pending = 0
+
+            if state != 0:
+                bars_held = idx - entry_idx
+                exit_trade = False
+                exit_pnl = 0.0
+
+                if state == 1:
+                    cur_pnl = (closes[idx] - entry_price) / entry_price
+                    sl_val = last_sl_price[idx]
+                    if sl_val == sl_val:  # not NaN
+                        new_sl = sl_val * (1.0 - swing_buffer)
+                        if new_sl > trail_sl_price:
+                            trail_sl_price = new_sl
+                    if lows[idx] <= trail_sl_price:
+                        exit_trade = True
+                        exit_pnl = (trail_sl_price - entry_price) / entry_price
+                    elif bars_held >= min_hold and choch_down[idx] == 1:
+                        exit_trade = True
+                        exit_pnl = cur_pnl
+                else:
+                    cur_pnl = (entry_price - closes[idx]) / entry_price
+                    sh_val = last_sh_price[idx]
+                    if sh_val == sh_val:  # not NaN
+                        new_sl = sh_val * (1.0 + swing_buffer)
+                        if new_sl < trail_sl_price:
+                            trail_sl_price = new_sl
+                    if highs[idx] >= trail_sl_price:
+                        exit_trade = True
+                        exit_pnl = (entry_price - trail_sl_price) / entry_price
+                    elif bars_held >= min_hold and choch_up[idx] == 1:
+                        exit_trade = True
+                        exit_pnl = cur_pnl
+
+                if not exit_trade and bars_held >= max_hold:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+                if not exit_trade and idx == n - 1:
+                    exit_trade = True
+                    exit_pnl = cur_pnl
+
+                if exit_trade:
+                    total_return += exit_pnl - commission
+                    total_pnl_pts += exit_pnl * entry_price
+                    if exit_pnl > 0:
+                        n_wins += 1
+                    state = 0
+                    entry_price = 0.0
+                    trail_sl_price = 0.0
+
+            if state == 0 and signals[idx] != 0:
+                pending = signals[idx]
+
+        return total_return, n_trades, n_wins, total_pnl_pts
+
+    # Warmup trend JIT kernels
+    _dt = np.array([100.0, 101.0, 102.0], dtype=np.float64)
+    _ds = np.array([1, 0, -1], dtype=np.int32)
+    _di8 = np.array([0, 1, 0], dtype=np.int8)
+    _df = np.array([99.0, 100.0, 101.0], dtype=np.float64)
+    _backtest_trend_choch_jit(_dt, _dt, _dt+0.5, _dt-0.5, _ds, _di8, _di8,
+                              0.01, 3, 100, 0.00021)
+    _backtest_trend_swing_jit(_dt, _dt, _dt+0.5, _dt-0.5, _ds, _df, _df,
+                              0.01, 0.001, 100, 0.00021)
+    _backtest_trend_state_jit(_dt, _dt, _dt+0.5, _dt-0.5, _ds, _di8,
+                              0.01, 1, 5, 100, 0.00021)
+    _backtest_trend_hybrid_jit(_dt, _dt, _dt+0.5, _dt-0.5, _ds,
+                               _di8, _di8, _df, _df,
+                               0.01, 0.001, 3, 100, 0.00021)
+
+
+def backtest_trend_choch(
+    opens: np.ndarray,
+    closes: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    signals: np.ndarray,
+    choch_up: np.ndarray,
+    choch_down: np.ndarray,
+    sl: float,
+    min_hold: int = 3,
+    max_hold: int = 500,
+    commission: float = 0.00021,
+) -> Tuple[float, int, int, float]:
+    """
+    Mode 5: CHOCH Exit — hold position until CHOCH fires.
+    SL always active. min_hold prevents noise exits.
+    """
+    if HAS_NUMBA:
+        return _backtest_trend_choch_jit(
+            np.asarray(opens, dtype=np.float64),
+            np.asarray(closes, dtype=np.float64),
+            np.asarray(highs, dtype=np.float64),
+            np.asarray(lows, dtype=np.float64),
+            np.asarray(signals, dtype=np.int32),
+            np.asarray(choch_up, dtype=np.int8),
+            np.asarray(choch_down, dtype=np.int8),
+            sl, min_hold, max_hold, commission)
+
+    n = len(closes)
+    state = 0; entry_price = 0.0; entry_idx = 0
+    total_return = 0.0; total_pnl_pts = 0.0; n_trades = 0; n_wins = 0; pending = 0
+
+    for idx in range(n):
+        if state == 0 and pending != 0:
+            state = pending; entry_price = opens[idx]; entry_idx = idx
+            total_return -= commission; n_trades += 1; pending = 0
+        if state != 0:
+            if state == 1:
+                min_pnl = (lows[idx] - entry_price) / entry_price
+                cur_pnl = (closes[idx] - entry_price) / entry_price
+            else:
+                min_pnl = (entry_price - highs[idx]) / entry_price
+                cur_pnl = (entry_price - closes[idx]) / entry_price
+            exit_trade = False; exit_pnl = 0.0; bars_held = idx - entry_idx
+            if min_pnl <= -sl:
+                exit_trade = True; exit_pnl = -sl
+            elif bars_held >= min_hold:
+                if state == 1 and choch_down[idx]:
+                    exit_trade = True; exit_pnl = cur_pnl
+                elif state == -1 and choch_up[idx]:
+                    exit_trade = True; exit_pnl = cur_pnl
+            if not exit_trade and bars_held >= max_hold:
+                exit_trade = True; exit_pnl = cur_pnl
+            if not exit_trade and idx == n - 1:
+                exit_trade = True; exit_pnl = cur_pnl
+            if exit_trade:
+                total_return += exit_pnl - commission
+                total_pnl_pts += exit_pnl * entry_price
+                if exit_pnl > 0: n_wins += 1
+                state = 0; entry_price = 0.0
+        if state == 0 and signals[idx] != 0:
+            pending = signals[idx]
+    return total_return, n_trades, n_wins, total_pnl_pts
+
+
+def backtest_trend_swing(
+    opens: np.ndarray,
+    closes: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    signals: np.ndarray,
+    last_sh_price: np.ndarray,
+    last_sl_price: np.ndarray,
+    sl: float,
+    swing_buffer: float = 0.001,
+    max_hold: int = 500,
+    commission: float = 0.00021,
+) -> Tuple[float, int, int, float]:
+    """
+    Mode 6: Swing Trailing — structural swing points as trailing stop.
+    Long: SL trails to last_sl_price - buffer. Short: SL trails to last_sh_price + buffer.
+    """
+    if HAS_NUMBA:
+        return _backtest_trend_swing_jit(
+            np.asarray(opens, dtype=np.float64),
+            np.asarray(closes, dtype=np.float64),
+            np.asarray(highs, dtype=np.float64),
+            np.asarray(lows, dtype=np.float64),
+            np.asarray(signals, dtype=np.int32),
+            np.asarray(last_sh_price, dtype=np.float64),
+            np.asarray(last_sl_price, dtype=np.float64),
+            sl, swing_buffer, max_hold, commission)
+
+    n = len(closes)
+    state = 0; entry_price = 0.0; entry_idx = 0; trail_sl_price = 0.0
+    total_return = 0.0; total_pnl_pts = 0.0; n_trades = 0; n_wins = 0; pending = 0
+
+    for idx in range(n):
+        if state == 0 and pending != 0:
+            state = pending; entry_price = opens[idx]; entry_idx = idx
+            if state == 1: trail_sl_price = entry_price * (1.0 - sl)
+            else: trail_sl_price = entry_price * (1.0 + sl)
+            total_return -= commission; n_trades += 1; pending = 0
+        if state != 0:
+            if state == 1:
+                sl_val = last_sl_price[idx]
+                if not np.isnan(sl_val):
+                    new_sl = sl_val * (1.0 - swing_buffer)
+                    if new_sl > trail_sl_price: trail_sl_price = new_sl
+                if lows[idx] <= trail_sl_price:
+                    exit_pnl = (trail_sl_price - entry_price) / entry_price
+                    total_return += exit_pnl - commission
+                    total_pnl_pts += exit_pnl * entry_price
+                    if exit_pnl > 0: n_wins += 1
+                    state = 0; entry_price = 0.0
+                else:
+                    cur_pnl = (closes[idx] - entry_price) / entry_price
+                    if (idx - entry_idx) >= max_hold or idx == n - 1:
+                        total_return += cur_pnl - commission
+                        total_pnl_pts += cur_pnl * entry_price
+                        if cur_pnl > 0: n_wins += 1
+                        state = 0; entry_price = 0.0
+            else:
+                sh_val = last_sh_price[idx]
+                if not np.isnan(sh_val):
+                    new_sl = sh_val * (1.0 + swing_buffer)
+                    if new_sl < trail_sl_price: trail_sl_price = new_sl
+                if highs[idx] >= trail_sl_price:
+                    exit_pnl = (entry_price - trail_sl_price) / entry_price
+                    total_return += exit_pnl - commission
+                    total_pnl_pts += exit_pnl * entry_price
+                    if exit_pnl > 0: n_wins += 1
+                    state = 0; entry_price = 0.0
+                else:
+                    cur_pnl = (entry_price - closes[idx]) / entry_price
+                    if (idx - entry_idx) >= max_hold or idx == n - 1:
+                        total_return += cur_pnl - commission
+                        total_pnl_pts += cur_pnl * entry_price
+                        if cur_pnl > 0: n_wins += 1
+                        state = 0; entry_price = 0.0
+        if state == 0 and signals[idx] != 0:
+            pending = signals[idx]
+    return total_return, n_trades, n_wins, total_pnl_pts
+
+
+def backtest_trend_state(
+    opens: np.ndarray,
+    closes: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    signals: np.ndarray,
+    trend: np.ndarray,
+    sl: float,
+    exit_on_neutral: int = 1,
+    min_hold: int = 5,
+    max_hold: int = 500,
+    commission: float = 0.00021,
+) -> Tuple[float, int, int, float]:
+    """
+    Mode 7: Trend-State Hold — stay in while trend aligns with direction.
+    exit_on_neutral=1: exit when trend != direction. =0: only on reversal.
+    """
+    if HAS_NUMBA:
+        return _backtest_trend_state_jit(
+            np.asarray(opens, dtype=np.float64),
+            np.asarray(closes, dtype=np.float64),
+            np.asarray(highs, dtype=np.float64),
+            np.asarray(lows, dtype=np.float64),
+            np.asarray(signals, dtype=np.int32),
+            np.asarray(trend, dtype=np.int8),
+            sl, exit_on_neutral, min_hold, max_hold, commission)
+
+    n = len(closes)
+    state = 0; entry_price = 0.0; entry_idx = 0
+    total_return = 0.0; total_pnl_pts = 0.0; n_trades = 0; n_wins = 0; pending = 0
+
+    for idx in range(n):
+        if state == 0 and pending != 0:
+            state = pending; entry_price = opens[idx]; entry_idx = idx
+            total_return -= commission; n_trades += 1; pending = 0
+        if state != 0:
+            if state == 1:
+                min_pnl = (lows[idx] - entry_price) / entry_price
+                cur_pnl = (closes[idx] - entry_price) / entry_price
+            else:
+                min_pnl = (entry_price - highs[idx]) / entry_price
+                cur_pnl = (entry_price - closes[idx]) / entry_price
+            exit_trade = False; exit_pnl = 0.0; bars_held = idx - entry_idx
+            if min_pnl <= -sl:
+                exit_trade = True; exit_pnl = -sl
+            elif bars_held >= min_hold:
+                if exit_on_neutral == 1:
+                    if state == 1 and trend[idx] != 1:
+                        exit_trade = True; exit_pnl = cur_pnl
+                    elif state == -1 and trend[idx] != -1:
+                        exit_trade = True; exit_pnl = cur_pnl
+                else:
+                    if state == 1 and trend[idx] == -1:
+                        exit_trade = True; exit_pnl = cur_pnl
+                    elif state == -1 and trend[idx] == 1:
+                        exit_trade = True; exit_pnl = cur_pnl
+            if not exit_trade and bars_held >= max_hold:
+                exit_trade = True; exit_pnl = cur_pnl
+            if not exit_trade and idx == n - 1:
+                exit_trade = True; exit_pnl = cur_pnl
+            if exit_trade:
+                total_return += exit_pnl - commission
+                total_pnl_pts += exit_pnl * entry_price
+                if exit_pnl > 0: n_wins += 1
+                state = 0; entry_price = 0.0
+        if state == 0 and signals[idx] != 0:
+            pending = signals[idx]
+    return total_return, n_trades, n_wins, total_pnl_pts
+
+
+def backtest_trend_hybrid(
+    opens: np.ndarray,
+    closes: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    signals: np.ndarray,
+    choch_up: np.ndarray,
+    choch_down: np.ndarray,
+    last_sh_price: np.ndarray,
+    last_sl_price: np.ndarray,
+    sl: float,
+    swing_buffer: float = 0.001,
+    min_hold: int = 3,
+    max_hold: int = 500,
+    commission: float = 0.00021,
+) -> Tuple[float, int, int, float]:
+    """Mode 8: Hybrid — Swing trailing + CHOCH exit, whichever fires first."""
+    if HAS_NUMBA:
+        return _backtest_trend_hybrid_jit(
+            np.asarray(opens, dtype=np.float64),
+            np.asarray(closes, dtype=np.float64),
+            np.asarray(highs, dtype=np.float64),
+            np.asarray(lows, dtype=np.float64),
+            np.asarray(signals, dtype=np.int32),
+            np.asarray(choch_up, dtype=np.int8),
+            np.asarray(choch_down, dtype=np.int8),
+            np.asarray(last_sh_price, dtype=np.float64),
+            np.asarray(last_sl_price, dtype=np.float64),
+            sl, swing_buffer, min_hold, max_hold, commission)
+
+    n = len(closes)
+    state = 0; entry_price = 0.0; entry_idx = 0; trail_sl_price = 0.0
+    total_return = 0.0; total_pnl_pts = 0.0; n_trades = 0; n_wins = 0; pending = 0
+
+    for idx in range(n):
+        if state == 0 and pending != 0:
+            state = pending; entry_price = opens[idx]; entry_idx = idx
+            if state == 1: trail_sl_price = entry_price * (1.0 - sl)
+            else: trail_sl_price = entry_price * (1.0 + sl)
+            total_return -= commission; n_trades += 1; pending = 0
+        if state != 0:
+            bars_held = idx - entry_idx
+            exit_trade = False; exit_pnl = 0.0
+            if state == 1:
+                cur_pnl = (closes[idx] - entry_price) / entry_price
+                sl_val = last_sl_price[idx]
+                if not np.isnan(sl_val):
+                    new_sl = sl_val * (1.0 - swing_buffer)
+                    if new_sl > trail_sl_price: trail_sl_price = new_sl
+                if lows[idx] <= trail_sl_price:
+                    exit_trade = True
+                    exit_pnl = (trail_sl_price - entry_price) / entry_price
+                elif bars_held >= min_hold and choch_down[idx]:
+                    exit_trade = True; exit_pnl = cur_pnl
+            else:
+                cur_pnl = (entry_price - closes[idx]) / entry_price
+                sh_val = last_sh_price[idx]
+                if not np.isnan(sh_val):
+                    new_sl = sh_val * (1.0 + swing_buffer)
+                    if new_sl < trail_sl_price: trail_sl_price = new_sl
+                if highs[idx] >= trail_sl_price:
+                    exit_trade = True
+                    exit_pnl = (entry_price - trail_sl_price) / entry_price
+                elif bars_held >= min_hold and choch_up[idx]:
+                    exit_trade = True; exit_pnl = cur_pnl
+            if not exit_trade and bars_held >= max_hold:
+                exit_trade = True
+                cur_pnl = ((closes[idx] - entry_price) / entry_price if state == 1
+                           else (entry_price - closes[idx]) / entry_price)
+                exit_pnl = cur_pnl
+            if not exit_trade and idx == n - 1:
+                exit_trade = True
+                cur_pnl = ((closes[idx] - entry_price) / entry_price if state == 1
+                           else (entry_price - closes[idx]) / entry_price)
+                exit_pnl = cur_pnl
+            if exit_trade:
+                total_return += exit_pnl - commission
+                total_pnl_pts += exit_pnl * entry_price
+                if exit_pnl > 0: n_wins += 1
+                state = 0; entry_price = 0.0; trail_sl_price = 0.0
+        if state == 0 and signals[idx] != 0:
+            pending = signals[idx]
     return total_return, n_trades, n_wins, total_pnl_pts

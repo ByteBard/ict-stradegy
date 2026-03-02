@@ -36,7 +36,10 @@ from src.strategies.adaptive_strategy import (
     strategy_s21_mean_reversion,
     strategy_s22_regime_switch,
 )
-from src.backtest.state_machine import backtest_pft, backtest_simple, backtest_atr, backtest_trail
+from src.backtest.state_machine import (
+    backtest_pft, backtest_simple, backtest_atr, backtest_trail, backtest_trail_dynamic,
+    backtest_trend_choch, backtest_trend_swing, backtest_trend_state, backtest_trend_hybrid,
+)
 
 # ============================================================================
 # 配置
@@ -78,6 +81,21 @@ TP_ATR_OPTIONS = [1.5, 2.0, 3.0, 4.0, 6.0]
 # 移动止损参数网格
 TRAIL_ACTIVATE_OPTIONS = [0.003, 0.005, 0.007, 0.010]
 TRAIL_DD_OPTIONS = [0.3, 0.4, 0.5, 0.6, 0.7]
+
+# 动态ATR移动止损参数网格 (SL/TA 用 ATR 倍数, 低波动自动缩小SL)
+TRAIL_SL_ATR_MULT = [1.5, 2.0, 2.5]
+TRAIL_TA_ATR_MULT = [1.0, 1.5]
+
+# 趋势跟随出场参数网格 (Mode 5-8)
+TREND_SL_OPTIONS = [0.010, 0.015, 0.020, 0.025, 0.030]
+TREND_MIN_HOLD_OPTIONS = [3, 5, 10]
+TREND_MAX_HOLD_OPTIONS = [120, 240, 480, 960]
+TREND_SWING_BUFFER_OPTIONS = [0.0005, 0.001, 0.002]
+TREND_NEUTRAL_OPTIONS = [0, 1]
+
+# SL 缩放: 低波动月自动缩小SL (test-time adjustment, 不影响grid search)
+# 当测试月ATR低于训练期中位数时, SL按比例缩小
+SL_SCALE_ENABLED = True  # 默认开启
 
 # 重采样选项
 RESAMPLE_OPTIONS = ['15min', '30min']
@@ -497,7 +515,11 @@ def rolling_optimize(
     dd_scale_full: float = 0.30,     # 回撤超过30%缩到最小仓
     dd_min_ratio: float = 0.25,      # 最小仓位比例 (25%)
     sqrt_sizing: bool = False,       # 平方根仓位缩放
-    mtf_filter: bool = False,        # 多周期趋势过滤 (日线EMA20)
+    mtf_filter: bool = False,        # 多周期趋势过滤 (日线EMA10)
+    vol_filter: bool = False,        # 波动性自适应仓位 (低波动减仓)
+    chase_filter: bool = False,       # 追涨追跌过滤 (dir_consistency > 0.6 跳过)
+    night_filter: bool = False,       # 夜盘过滤 (21:00-24:00 跳过信号)
+    dynamic_sl: bool = False,         # 动态SL: 测试时根据ATR缩放SL (低波动月缩小SL)
 ) -> dict:
     """
     滚动优化单策略 (带预缓存加速, backtest_simple模式)。
@@ -511,7 +533,10 @@ def rolling_optimize(
       dd_scale_full: 缩到最小仓位的回撤阈值
       dd_min_ratio: 最小仓位比例
       sqrt_sizing: 平方根仓位缩放 (减缓暴利暴亏)
-    mtf_filter: 多周期趋势过滤 — 只在日线EMA20方向一致时交易
+    mtf_filter: 多周期趋势过滤 — 只在日线EMA10方向一致时交易
+    vol_filter: 波动性自适应仓位 — 低波动月份减仓
+    chase_filter: 追涨追跌过滤 — 前5根单向运动后不追入 (亏损月输家核心特征)
+    night_filter: 夜盘过滤 — 21:00-24:00 不交易 (夜盘亏损月胜率仅48.8%)
     """
     slices, unique_months = get_month_slices(months)
 
@@ -522,6 +547,13 @@ def rolling_optimize(
     param_grid_fixed = list(product(SL_OPTIONS, TP_OPTIONS, MAX_HOLD_OPTIONS))
     param_grid_atr = list(product(SL_ATR_OPTIONS, TP_ATR_OPTIONS, MAX_HOLD_OPTIONS))
     param_grid_trail = list(product(SL_OPTIONS, TRAIL_ACTIVATE_OPTIONS, TRAIL_DD_OPTIONS, MAX_HOLD_OPTIONS))
+    param_grid_trail_dynamic = list(product(TRAIL_SL_ATR_MULT, TRAIL_TA_ATR_MULT, TRAIL_DD_OPTIONS, MAX_HOLD_OPTIONS))
+
+    # 趋势跟随出场参数网格 (Mode 5-8)
+    param_grid_choch = list(product(TREND_SL_OPTIONS, TREND_MIN_HOLD_OPTIONS, TREND_MAX_HOLD_OPTIONS))
+    param_grid_swing = list(product(TREND_SL_OPTIONS[:4], TREND_SWING_BUFFER_OPTIONS, TREND_MAX_HOLD_OPTIONS))
+    param_grid_tstate = list(product(TREND_SL_OPTIONS[:4], TREND_MIN_HOLD_OPTIONS, TREND_NEUTRAL_OPTIONS, TREND_MAX_HOLD_OPTIONS))
+    param_grid_hybrid = list(product(TREND_SL_OPTIONS[:3], TREND_SWING_BUFFER_OPTIONS[:2], TREND_MIN_HOLD_OPTIONS[:2], TREND_MAX_HOLD_OPTIONS[1:]))
 
     # ====== MTF: 日线趋势 (全量预计算) ======
     daily_trend = None
@@ -544,6 +576,37 @@ def rolling_optimize(
         n_bear = np.sum(daily_trend == -1)
         print(f"  MTF 日线趋势: 多头={n_bull} bars ({n_bull/len(closes)*100:.0f}%), "
               f"空头={n_bear} bars ({n_bear/len(closes)*100:.0f}%)")
+
+    # ====== 波动性过滤: 滚动20日价格范围 (全量预计算) ======
+    vol_filter_arr = None
+    vol_threshold = 0.0
+    if vol_filter:
+        ts = pd.to_datetime(timestamps)
+        df_daily = pd.DataFrame({
+            'high': highs, 'low': lows, 'close': closes
+        }, index=ts)
+        daily_df = df_daily.resample('1D').agg({'high': 'max', 'low': 'min', 'close': 'last'}).dropna()
+        # 滚动20日 range = (20日最高 - 20日最低) / 均价
+        roll_high = daily_df['high'].rolling(20).max()
+        roll_low = daily_df['low'].rolling(20).min()
+        roll_range = (roll_high - roll_low) / daily_df['close']
+        # 映射回 bar 级别
+        vol_filter_arr = np.zeros(len(closes), dtype=np.float64)
+        dates_v = daily_df.index
+        range_vals = roll_range.values
+        jv = 0
+        for i in range(len(closes)):
+            while jv < len(dates_v) - 1 and dates_v[jv + 1] <= ts[i]:
+                jv += 1
+            vol_filter_arr[i] = range_vals[jv] if not np.isnan(range_vals[jv]) else 0.10
+        # 统计 & 阈值 (使用P15: 过滤最安静的15%时段)
+        valid_vf = vol_filter_arr[vol_filter_arr > 0]
+        q10, q15, q25, q50 = np.percentile(valid_vf, [10, 15, 25, 50])
+        vol_threshold = q15  # 15th percentile
+        n_low = np.sum(vol_filter_arr < vol_threshold)
+        print(f"  波动性过滤 (滚动20日范围): Q10={q10:.4f} Q15={q15:.4f} Q25={q25:.4f} Q50={q50:.4f}")
+        print(f"  过滤阈值 (P15): {vol_threshold:.4f} ({vol_threshold*100:.2f}%)")
+        print(f"  低波动 bars: {n_low:,} ({n_low/len(closes)*100:.1f}%)")
 
     # ====== 预缓存: 对每个 (month, swing_n) 预计算 detect_all + 信号 ======
     print(f"  预计算信号 ({len(unique_months)} 个月 x {len(SWING_N_OPTIONS)} swing_n)...")
@@ -570,6 +633,28 @@ def rolling_optimize(
                         sig[ii] = 0
                     elif sig[ii] == -1 and dt_slice[ii] != -1:
                         sig[ii] = 0
+            # 夜盘过滤: 21:00-24:00 信号置零 (夜盘亏损月WR仅48.8%)
+            if night_filter:
+                ts_slice = timestamps[s:e]
+                ts_hours = pd.to_datetime(ts_slice).hour
+                for ii in range(len(sig)):
+                    if sig[ii] != 0 and ts_hours[ii] >= 21:
+                        sig[ii] = 0
+            # 波动性自适应: 不再过滤信号，仅用于仓位缩放 (见下方)
+            # 追涨追跌过滤: 前5根bar方向一致性 > 0.6 → 跳过 (避免追入即反转)
+            if chase_filter:
+                c_arr_pre = closes[s:e]
+                for ii in range(5, len(sig)):
+                    if sig[ii] != 0:
+                        # 计算前5根的方向一致性
+                        diffs = np.sign(np.diff(c_arr_pre[ii-5:ii]))
+                        dir_con = abs(np.mean(diffs))
+                        # 检查是否"追": 方向与信号一致 + 高一致性
+                        if dir_con > 0.6:
+                            avg_dir = np.mean(diffs)
+                            # 做多时前5根在涨 = 追涨; 做空时前5根在跌 = 追跌
+                            if (sig[ii] == 1 and avg_dir > 0) or (sig[ii] == -1 and avg_dir < 0):
+                                sig[ii] = 0
             o_arr = opens[s:e].copy()
             c_arr = closes[s:e].copy()
             h_arr = highs[s:e].copy()
@@ -588,7 +673,14 @@ def rolling_optimize(
                     atr_arr[ii] = np.mean(atr_arr[1:ii+1]) if ii > 0 else atr_arr[ii]
                 else:
                     atr_arr[ii] = np.mean(atr_arr[ii-19:ii+1])
-            sig_cache[(month, swing_n)] = (sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr)
+            # 趋势数据 (用于 Mode 5-8)
+            choch_up_arr = det['choch_up'][:]  .astype(np.int8)
+            choch_down_arr = det['choch_down'][:].astype(np.int8)
+            trend_arr = det['trend'][:].copy()
+            last_sh = det['last_sh_price'][:].copy()
+            last_sl = det['last_sl_price'][:].copy()
+            sig_cache[(month, swing_n)] = (sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr,
+                                           choch_up_arr, choch_down_arr, trend_arr, last_sh, last_sl)
 
         if (m_idx + 1) % 30 == 0:
             print(f"    已预计算 {m_idx + 1}/{len(unique_months)} 个月")
@@ -634,7 +726,7 @@ def rolling_optimize(
                     key = (val_month, swing_n)
                     if key not in sig_cache:
                         continue
-                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr = sig_cache[key]
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
                     ret, nt, nw, _ = backtest_simple(
                         o_arr, c_arr, h_arr, l_arr, sig,
                         sl=sl, tp=tp, commission=COST_PER_SIDE,
@@ -656,7 +748,7 @@ def rolling_optimize(
                     key = (val_month, swing_n)
                     if key not in sig_cache:
                         continue
-                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr = sig_cache[key]
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
                     ret, nt, nw, _ = backtest_atr(
                         o_arr, c_arr, h_arr, l_arr, sig, atr_arr,
                         sl_atr_mult=sl_m, tp_atr_mult=tp_m,
@@ -678,7 +770,7 @@ def rolling_optimize(
                     key = (val_month, swing_n)
                     if key not in sig_cache:
                         continue
-                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr = sig_cache[key]
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
                     ret, nt, nw, _ = backtest_trail(
                         o_arr, c_arr, h_arr, l_arr, sig,
                         sl=sl, trail_activate=ta, trail_dd=td,
@@ -692,11 +784,152 @@ def rolling_optimize(
                     score = _score_monthly_rets(monthly_rets)
                     param_scores.append((score, ('trail', swing_n, sl, ta, td, max_hold)))
 
+            # 模式4: 动态ATR移动止损 (SL/TA = ATR倍数, 低波动自动缩SL)
+            for sl_m, ta_m, td, max_hold in param_grid_trail_dynamic:
+                monthly_rets = []
+                for val_idx in range(max(0, test_idx - train_months), test_idx):
+                    val_month = unique_months[val_idx]
+                    key = (val_month, swing_n)
+                    if key not in sig_cache:
+                        continue
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
+                    ret, nt, nw, _ = backtest_trail_dynamic(
+                        o_arr, c_arr, h_arr, l_arr, sig, atr_arr,
+                        sl_mult=sl_m, ta_mult=ta_m, trail_dd=td,
+                        commission=COST_PER_SIDE, max_hold=max_hold)
+                    if nt > 0:
+                        pnl_per_lot = ret * avg_p * MULTIPLIER
+                        n_lots_t = max(1, min(MAX_LOTS, int(INITIAL_CAPITAL / MARGIN_PER_LOT)))
+                        month_ret = pnl_per_lot * n_lots_t / INITIAL_CAPITAL
+                        monthly_rets.append(month_ret)
+                if len(monthly_rets) >= 3:
+                    score = _score_monthly_rets(monthly_rets)
+                    param_scores.append((score, ('trail_dyn', swing_n, sl_m, ta_m, td, max_hold)))
+
+            # 模式5: CHOCH出场 (趋势反转才走)
+            for sl, min_h, max_hold in param_grid_choch:
+                monthly_rets = []
+                for val_idx in range(max(0, test_idx - train_months), test_idx):
+                    val_month = unique_months[val_idx]
+                    key = (val_month, swing_n)
+                    if key not in sig_cache:
+                        continue
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
+                    ret, nt, nw, _ = backtest_trend_choch(
+                        o_arr, c_arr, h_arr, l_arr, sig,
+                        t_choch_up, t_choch_down,
+                        sl=sl, min_hold=min_h, max_hold=max_hold,
+                        commission=COST_PER_SIDE)
+                    if nt > 0:
+                        pnl_per_lot = ret * avg_p * MULTIPLIER
+                        n_lots_t = max(1, min(MAX_LOTS, int(INITIAL_CAPITAL / MARGIN_PER_LOT)))
+                        month_ret = pnl_per_lot * n_lots_t / INITIAL_CAPITAL
+                        monthly_rets.append(month_ret)
+                if len(monthly_rets) >= 3:
+                    score = _score_monthly_rets(monthly_rets)
+                    param_scores.append((score, ('choch', swing_n, sl, min_h, max_hold)))
+
+            # 模式6: 摆动点移动止损
+            for sl, buf, max_hold in param_grid_swing:
+                monthly_rets = []
+                for val_idx in range(max(0, test_idx - train_months), test_idx):
+                    val_month = unique_months[val_idx]
+                    key = (val_month, swing_n)
+                    if key not in sig_cache:
+                        continue
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
+                    ret, nt, nw, _ = backtest_trend_swing(
+                        o_arr, c_arr, h_arr, l_arr, sig,
+                        t_last_sh, t_last_sl,
+                        sl=sl, swing_buffer=buf, max_hold=max_hold,
+                        commission=COST_PER_SIDE)
+                    if nt > 0:
+                        pnl_per_lot = ret * avg_p * MULTIPLIER
+                        n_lots_t = max(1, min(MAX_LOTS, int(INITIAL_CAPITAL / MARGIN_PER_LOT)))
+                        month_ret = pnl_per_lot * n_lots_t / INITIAL_CAPITAL
+                        monthly_rets.append(month_ret)
+                if len(monthly_rets) >= 3:
+                    score = _score_monthly_rets(monthly_rets)
+                    param_scores.append((score, ('swing', swing_n, sl, buf, max_hold)))
+
+            # 模式7: 趋势状态持仓
+            for sl, min_h, neutral, max_hold in param_grid_tstate:
+                monthly_rets = []
+                for val_idx in range(max(0, test_idx - train_months), test_idx):
+                    val_month = unique_months[val_idx]
+                    key = (val_month, swing_n)
+                    if key not in sig_cache:
+                        continue
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
+                    ret, nt, nw, _ = backtest_trend_state(
+                        o_arr, c_arr, h_arr, l_arr, sig,
+                        t_trend,
+                        sl=sl, exit_on_neutral=neutral, min_hold=min_h,
+                        max_hold=max_hold, commission=COST_PER_SIDE)
+                    if nt > 0:
+                        pnl_per_lot = ret * avg_p * MULTIPLIER
+                        n_lots_t = max(1, min(MAX_LOTS, int(INITIAL_CAPITAL / MARGIN_PER_LOT)))
+                        month_ret = pnl_per_lot * n_lots_t / INITIAL_CAPITAL
+                        monthly_rets.append(month_ret)
+                if len(monthly_rets) >= 3:
+                    score = _score_monthly_rets(monthly_rets)
+                    param_scores.append((score, ('tstate', swing_n, sl, min_h, neutral, max_hold)))
+
+            # 模式8: 混合 (Swing移动+CHOCH双保险)
+            for sl, buf, min_h, max_hold in param_grid_hybrid:
+                monthly_rets = []
+                for val_idx in range(max(0, test_idx - train_months), test_idx):
+                    val_month = unique_months[val_idx]
+                    key = (val_month, swing_n)
+                    if key not in sig_cache:
+                        continue
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
+                    ret, nt, nw, _ = backtest_trend_hybrid(
+                        o_arr, c_arr, h_arr, l_arr, sig,
+                        t_choch_up, t_choch_down, t_last_sh, t_last_sl,
+                        sl=sl, swing_buffer=buf, min_hold=min_h,
+                        max_hold=max_hold, commission=COST_PER_SIDE)
+                    if nt > 0:
+                        pnl_per_lot = ret * avg_p * MULTIPLIER
+                        n_lots_t = max(1, min(MAX_LOTS, int(INITIAL_CAPITAL / MARGIN_PER_LOT)))
+                        month_ret = pnl_per_lot * n_lots_t / INITIAL_CAPITAL
+                        monthly_rets.append(month_ret)
+                if len(monthly_rets) >= 3:
+                    score = _score_monthly_rets(monthly_rets)
+                    param_scores.append((score, ('hybrid', swing_n, sl, buf, min_h, max_hold)))
+
         # 取 top-K 参数组 (按训练收益排序)
         param_scores.sort(key=lambda x: x[0], reverse=True)
         top_k_params = [p[1] for p in param_scores[:TOP_K]]
         if not top_k_params:
             top_k_params = [('fixed', 3, 0.01, 0.03, 240)]
+
+        # 动态SL: 计算测试月ATR相对训练期的缩放比
+        sl_scale = 1.0
+        if dynamic_sl:
+            # 训练期ATR (取所有训练月ATR的中位数)
+            train_atrs = []
+            for val_idx in range(max(0, test_idx - train_months), test_idx):
+                vm = unique_months[val_idx]
+                for sn in SWING_N_OPTIONS:
+                    k = (vm, sn)
+                    if k in sig_cache:
+                        _, _, _, _, _, ap, atr_a, *_ = sig_cache[k]
+                        # 归一化ATR: mean(atr) / avg_price
+                        valid_atr = atr_a[atr_a > 0]
+                        if len(valid_atr) > 0:
+                            train_atrs.append(np.mean(valid_atr) / ap)
+                        break  # 一个swing_n够了
+            # 测试月ATR
+            test_key = (test_month, SWING_N_OPTIONS[0])
+            if test_key in sig_cache and train_atrs:
+                _, _, _, _, _, test_avg_p, test_atr, *_ = sig_cache[test_key]
+                valid_test_atr = test_atr[test_atr > 0]
+                if len(valid_test_atr) > 0:
+                    test_atr_norm = np.mean(valid_test_atr) / test_avg_p
+                    train_median_atr = np.median(train_atrs)
+                    if train_median_atr > 0:
+                        sl_scale = np.clip(test_atr_norm / train_median_atr, 0.3, 1.0)
 
         # 测试阶段: 对 top-K 参数集成 (PnL 加权平均)
         ensemble_ret = 0.0
@@ -712,16 +945,29 @@ def rolling_optimize(
             if key not in sig_cache:
                 continue
 
-            sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr = sig_cache[key]
-            if mode == 'trail':
+            sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
+            if mode == 'trail_dyn':
+                # trail_dyn: ('trail_dyn', swing_n, sl_mult, ta_mult, trail_dd, max_hold)
+                sl_m = params[2]
+                ta_m = params[3]
+                td = params[4]
+                max_hold = params[5]
+                ret_k, n_t_k, n_w_k, _ = backtest_trail_dynamic(
+                    o_arr, c_arr, h_arr, l_arr, sig, atr_arr,
+                    sl_mult=sl_m, ta_mult=ta_m, trail_dd=td,
+                    commission=COST_PER_SIDE, max_hold=max_hold)
+            elif mode == 'trail':
                 # trail: ('trail', swing_n, sl, trail_activate, trail_dd, max_hold)
                 sl = params[2]
                 ta = params[3]
                 td = params[4]
                 max_hold = params[5]
+                # 动态SL缩放: 低波动月缩小SL和trail_activate
+                sl_adj = sl * sl_scale
+                ta_adj = ta * sl_scale
                 ret_k, n_t_k, n_w_k, _ = backtest_trail(
                     o_arr, c_arr, h_arr, l_arr, sig,
-                    sl=sl, trail_activate=ta, trail_dd=td,
+                    sl=sl_adj, trail_activate=ta_adj, trail_dd=td,
                     commission=COST_PER_SIDE, max_hold=max_hold)
             elif mode == 'atr':
                 sl = params[2]
@@ -731,13 +977,57 @@ def rolling_optimize(
                     o_arr, c_arr, h_arr, l_arr, sig, atr_arr,
                     sl_atr_mult=sl, tp_atr_mult=tp,
                     commission=COST_PER_SIDE, max_hold=max_hold)
+            elif mode == 'choch':
+                # ('choch', swing_n, sl, min_hold, max_hold)
+                sl = params[2] * sl_scale
+                min_h = params[3]
+                max_hold = params[4]
+                ret_k, n_t_k, n_w_k, _ = backtest_trend_choch(
+                    o_arr, c_arr, h_arr, l_arr, sig,
+                    t_choch_up, t_choch_down,
+                    sl=sl, min_hold=min_h, max_hold=max_hold,
+                    commission=COST_PER_SIDE)
+            elif mode == 'swing':
+                # ('swing', swing_n, sl, buffer, max_hold)
+                sl = params[2] * sl_scale
+                buf = params[3]
+                max_hold = params[4]
+                ret_k, n_t_k, n_w_k, _ = backtest_trend_swing(
+                    o_arr, c_arr, h_arr, l_arr, sig,
+                    t_last_sh, t_last_sl,
+                    sl=sl, swing_buffer=buf, max_hold=max_hold,
+                    commission=COST_PER_SIDE)
+            elif mode == 'tstate':
+                # ('tstate', swing_n, sl, min_hold, neutral, max_hold)
+                sl = params[2] * sl_scale
+                min_h = params[3]
+                neutral = params[4]
+                max_hold = params[5]
+                ret_k, n_t_k, n_w_k, _ = backtest_trend_state(
+                    o_arr, c_arr, h_arr, l_arr, sig,
+                    t_trend,
+                    sl=sl, exit_on_neutral=neutral, min_hold=min_h,
+                    max_hold=max_hold, commission=COST_PER_SIDE)
+            elif mode == 'hybrid':
+                # ('hybrid', swing_n, sl, buffer, min_hold, max_hold)
+                sl = params[2] * sl_scale
+                buf = params[3]
+                min_h = params[4]
+                max_hold = params[5]
+                ret_k, n_t_k, n_w_k, _ = backtest_trend_hybrid(
+                    o_arr, c_arr, h_arr, l_arr, sig,
+                    t_choch_up, t_choch_down, t_last_sh, t_last_sl,
+                    sl=sl, swing_buffer=buf, min_hold=min_h,
+                    max_hold=max_hold, commission=COST_PER_SIDE)
             else:
                 sl = params[2]
                 tp = params[3]
                 max_hold = params[4]
+                # 动态SL缩放: 也适用于fixed模式
+                sl_adj = sl * sl_scale
                 ret_k, n_t_k, n_w_k, _ = backtest_simple(
                     o_arr, c_arr, h_arr, l_arr, sig,
-                    sl=sl, tp=tp, commission=COST_PER_SIDE,
+                    sl=sl_adj, tp=tp, commission=COST_PER_SIDE,
                     max_hold=max_hold)
 
             ensemble_ret += ret_k
@@ -756,7 +1046,7 @@ def rolling_optimize(
         best_p = top_k_params[0]
         key0 = (test_month, best_p[1])
         if key0 in sig_cache:
-            _, _, _, _, _, avg_p, _ = sig_cache[key0]
+            _, _, _, _, _, avg_p, *_ = sig_cache[key0]
         else:
             avg_p = float(np.mean(closes))
 
@@ -766,6 +1056,23 @@ def rolling_optimize(
             base_lots = int(np.sqrt(capital / INITIAL_CAPITAL) * (INITIAL_CAPITAL / MARGIN_PER_LOT))
 
         n_lots = max(1, min(MAX_LOTS, base_lots))
+
+        # 波动性自适应仓位: 低波动减仓
+        if vol_filter_arr is not None:
+            s_test, e_test = slices[test_month]
+            # 用月初的滚动范围 (trailing, 不偷看)
+            month_vol = vol_filter_arr[s_test]
+            # 基于 vol_threshold (P15) 和 vol_median (P50) 做线性缩放
+            vol_median = np.percentile(vol_filter_arr[vol_filter_arr > 0], 50)
+            if month_vol < vol_threshold:
+                # 极低波动: 缩至 50%
+                vol_ratio = 0.5
+            elif month_vol < vol_median:
+                # 低于中位数: 线性缩放 50%-100%
+                vol_ratio = 0.5 + 0.5 * (month_vol - vol_threshold) / (vol_median - vol_threshold + 1e-10)
+            else:
+                vol_ratio = 1.0
+            n_lots = max(1, int(n_lots * vol_ratio))
 
         # 回撤自适应仓位
         dd_ratio = 1.0
@@ -796,9 +1103,24 @@ def rolling_optimize(
             if m0 == 'trail':
                 sl0, ta0, td0, mh0 = top1[2], top1[3], top1[4], top1[5]
                 params_str = f"TR:SL={sl0*100:.1f}%,A={ta0*100:.1f}%,DD={td0:.0%}"
+            elif m0 == 'trail_dyn':
+                sl0, ta0, td0, mh0 = top1[2], top1[3], top1[4], top1[5]
+                params_str = f"TRD:SL={sl0:.1f}x,TA={ta0:.1f}x,DD={td0:.0%}"
             elif m0 == 'atr':
                 sl0, tp0, mh0 = top1[2], top1[3], top1[4]
                 params_str = f"ATR:SL={sl0:.1f}x,TP={tp0:.1f}x"
+            elif m0 == 'choch':
+                sl0, mh_min, mh0 = top1[2], top1[3], top1[4]
+                params_str = f"CHOCH:SL={sl0*100:.1f}%,mH={mh_min}"
+            elif m0 == 'swing':
+                sl0, buf0, mh0 = top1[2], top1[3], top1[4]
+                params_str = f"SWG:SL={sl0*100:.1f}%,B={buf0*100:.2f}%"
+            elif m0 == 'tstate':
+                sl0, mh_min, n0, mh0 = top1[2], top1[3], top1[4], top1[5]
+                params_str = f"TST:SL={sl0*100:.1f}%,mH={mh_min},N={n0}"
+            elif m0 == 'hybrid':
+                sl0, buf0, mh_min, mh0 = top1[2], top1[3], top1[4], top1[5]
+                params_str = f"HYB:SL={sl0*100:.1f}%,B={buf0*100:.2f}%,mH={mh_min}"
             else:
                 sl0, tp0, mh0 = top1[2], top1[3], top1[4]
                 params_str = f"SL={sl0*100:.1f}%,TP={tp0*100:.1f}%"
@@ -1140,7 +1462,15 @@ def main():
     parser.add_argument('--data', type=str, default=str(DATA_PATH), help='数据路径')
     parser.add_argument('--dd-control', action='store_true', help='启用回撤控制')
     parser.add_argument('--sqrt-sizing', action='store_true', help='平方根仓位缩放')
-    parser.add_argument('--mtf', action='store_true', help='多周期趋势过滤 (日线EMA20)')
+    parser.add_argument('--mtf', action='store_true', help='多周期趋势过滤 (日线EMA10)')
+    parser.add_argument('--vol-filter', action='store_true',
+                        help='波动性自适应仓位 (低波动减仓)')
+    parser.add_argument('--chase-filter', action='store_true',
+                        help='追涨追跌过滤 (前5根单向后不追入)')
+    parser.add_argument('--night-filter', action='store_true',
+                        help='夜盘过滤 (21:00后不交易)')
+    parser.add_argument('--dynamic-sl', action='store_true',
+                        help='动态SL (低波动月自动缩小SL)')
     parser.add_argument('--portfolio', action='store_true',
                         help='多品种组合回测 (RB+AG+CU)')
     args = parser.parse_args()
@@ -1314,7 +1644,11 @@ def main():
                     rollover_mask=rollover_mask,
                     dd_control=args.dd_control,
                     sqrt_sizing=args.sqrt_sizing,
-                    mtf_filter=args.mtf)
+                    mtf_filter=args.mtf,
+                    vol_filter=args.vol_filter,
+                    chase_filter=args.chase_filter,
+                    night_filter=args.night_filter,
+                    dynamic_sl=args.dynamic_sl)
 
                 if res:
                     ann = res.get('annualized_return_pct', 0)
