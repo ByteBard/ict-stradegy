@@ -111,7 +111,7 @@ def extract_smc_features(
         return features
 
     # 运行所有检测器
-    det = detect_all(opens, highs, lows, closes, volumes, swing_n=swing_n)
+    det = detect_all(opens, highs, lows, closes, volumes, swing_n=swing_n, causal=True)
 
     atr = det['atr']
     atr_safe = np.where(atr > 0, atr, 1.0)
@@ -286,12 +286,12 @@ def extract_smc_features(
     features[:, col] = np.nan_to_num((closes - det['eql_price']) / atr_safe, nan=0.0)
     col += 1
 
-    # sweep_then_choch: sweep 后 5 根内出现 CHOCH
+    # sweep_then_choch: 近5根内有sweep, 当前bar有CHOCH (因果版)
     stc = np.zeros(T, dtype=np.float64)
     for i in range(T):
-        if det['sweep_up'][i] or det['sweep_down'][i]:
-            for j in range(i + 1, min(i + 6, T)):
-                if det['choch_up'][j] or det['choch_down'][j]:
+        if det['choch_up'][i] or det['choch_down'][i]:
+            for j in range(max(0, i - 5), i):
+                if det['sweep_up'][j] or det['sweep_down'][j]:
                     stc[i] = 1.0
                     break
     features[:, col] = stc

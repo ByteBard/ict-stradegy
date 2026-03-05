@@ -63,9 +63,16 @@ def detect_swing_points(highs: np.ndarray, lows: np.ndarray,
 
 
 def get_swing_levels(highs: np.ndarray, lows: np.ndarray,
-                     swing_highs: np.ndarray, swing_lows: np.ndarray) -> tuple:
+                     swing_highs: np.ndarray, swing_lows: np.ndarray,
+                     delay: int = 0) -> tuple:
     """
     为每根 bar 记录最近的 swing high/low 的价格和 index。
+
+    Parameters
+    ----------
+    delay : int
+        延迟消费 swing point 的 bar 数。delay=n 表示 bar i 处的 swing
+        在 bar i+n 才被下游可见（消除前视偏差）。
 
     Returns
     -------
@@ -86,12 +93,13 @@ def get_swing_levels(highs: np.ndarray, lows: np.ndarray,
             last_sh_idx[i] = last_sh_idx[i - 1]
             last_sl_price[i] = last_sl_price[i - 1]
             last_sl_idx[i] = last_sl_idx[i - 1]
-        if swing_highs[i]:
-            last_sh_price[i] = highs[i]
-            last_sh_idx[i] = i
-        if swing_lows[i]:
-            last_sl_price[i] = lows[i]
-            last_sl_idx[i] = i
+        ci = i - delay  # 看 delay 根前的 swing
+        if ci >= 0 and swing_highs[ci]:
+            last_sh_price[i] = highs[ci]
+            last_sh_idx[i] = ci
+        if ci >= 0 and swing_lows[ci]:
+            last_sl_price[i] = lows[ci]
+            last_sl_idx[i] = ci
 
     return last_sh_price, last_sh_idx, last_sl_price, last_sl_idx
 
@@ -101,7 +109,8 @@ def get_swing_levels(highs: np.ndarray, lows: np.ndarray,
 # ============================================================================
 
 def detect_bos_choch(closes: np.ndarray, highs: np.ndarray, lows: np.ndarray,
-                     swing_highs: np.ndarray, swing_lows: np.ndarray) -> tuple:
+                     swing_highs: np.ndarray, swing_lows: np.ndarray,
+                     delay: int = 0) -> tuple:
     """
     BOS  = Break of Structure (顺趋势突破 swing point)
     CHOCH = Change of Character (逆趋势突破 swing point)
@@ -115,6 +124,11 @@ def detect_bos_choch(closes: np.ndarray, highs: np.ndarray, lows: np.ndarray,
     当趋势=下降:
       - 收盘 < 前 swing low  → BOS_down (继续下降)
       - 收盘 > 前 swing high → CHOCH_up (转为上升)
+
+    Parameters
+    ----------
+    delay : int
+        延迟消费 swing point 的 bar 数（消除前视偏差）。
 
     Returns
     -------
@@ -141,10 +155,11 @@ def detect_bos_choch(closes: np.ndarray, highs: np.ndarray, lows: np.ndarray,
     bos_down_consumed = False  # BOS_down 已触发，等下一个 swing low 重置
 
     for i in range(T):
-        # 更新 swing 记录
-        if swing_highs[i]:
+        # 更新 swing 记录 (延迟消费: 看 delay 根前的 swing)
+        ci = i - delay
+        if ci >= 0 and swing_highs[ci]:
             prev_sh = last_sh
-            last_sh = highs[i]
+            last_sh = highs[ci]
             bos_up_consumed = False  # 新 swing high → 重置 BOS_up 触发
             # 判断 HH or LH
             if not np.isnan(prev_sh):
@@ -152,14 +167,14 @@ def detect_bos_choch(closes: np.ndarray, highs: np.ndarray, lows: np.ndarray,
                     # Higher High → 上升倾向
                     if cur_trend <= 0:
                         cur_trend = 1
-                else:
-                    # Lower High → 下降倾向
+                elif last_sh < prev_sh:
+                    # Lower High → 下降倾向 (Equal High 不触发翻转)
                     if cur_trend >= 0:
                         cur_trend = -1
 
-        if swing_lows[i]:
+        if ci >= 0 and swing_lows[ci]:
             prev_sl = last_sl
-            last_sl = lows[i]
+            last_sl = lows[ci]
             bos_down_consumed = False  # 新 swing low → 重置 BOS_down 触发
             if not np.isnan(prev_sl):
                 if last_sl > prev_sl:
@@ -173,10 +188,13 @@ def detect_bos_choch(closes: np.ndarray, highs: np.ndarray, lows: np.ndarray,
 
         trend[i] = cur_trend
 
-        # 检测 BOS / CHOCH
+        # 检测 BOS / CHOCH (用当前 bar 的 closes[i])
         # BOS 只在首次突破 swing point 时触发，用 bos_consumed 防止重复
         if not np.isnan(last_sh) and not np.isnan(last_sl):
-            if closes[i] > last_sh and not swing_highs[i] and not bos_up_consumed:
+            # 排除刚消费的 swing bar 本身 (ci 位置)
+            is_new_sh = (ci >= 0 and swing_highs[ci])
+            is_new_sl = (ci >= 0 and swing_lows[ci])
+            if closes[i] > last_sh and not is_new_sh and not bos_up_consumed:
                 if cur_trend >= 0:
                     bos_up[i] = True
                 else:
@@ -186,7 +204,7 @@ def detect_bos_choch(closes: np.ndarray, highs: np.ndarray, lows: np.ndarray,
                 bos_up_consumed = True    # 防止重复触发直到下一个 swing high
                 bos_down_consumed = False  # 反向 BOS 解锁
 
-            elif closes[i] < last_sl and not swing_lows[i] and not bos_down_consumed:
+            elif closes[i] < last_sl and not is_new_sl and not bos_down_consumed:
                 if cur_trend <= 0:
                     bos_down[i] = True
                 else:
@@ -621,13 +639,18 @@ def detect_breaker_block(closes: np.ndarray, highs: np.ndarray,
 
 def detect_liquidity_sweep(highs: np.ndarray, lows: np.ndarray,
                            closes: np.ndarray,
-                           swing_highs: np.ndarray, swing_lows: np.ndarray
-                           ) -> tuple:
+                           swing_highs: np.ndarray, swing_lows: np.ndarray,
+                           delay: int = 0) -> tuple:
     """
     Liquidity Sweep = 影线刺穿 swing point 但收盘回到 swing 以内。
 
     Sweep Up:   high > last swing high, 但 close < last swing high
     Sweep Down: low  < last swing low,  但 close > last swing low
+
+    Parameters
+    ----------
+    delay : int
+        延迟消费 swing point 的 bar 数（消除前视偏差）。
 
     Returns
     -------
@@ -642,16 +665,20 @@ def detect_liquidity_sweep(highs: np.ndarray, lows: np.ndarray,
     last_sl = np.nan
 
     for i in range(T):
-        if swing_highs[i]:
-            last_sh = highs[i]
-        if swing_lows[i]:
-            last_sl = lows[i]
+        ci = i - delay  # 延迟消费 swing
+        if ci >= 0 and swing_highs[ci]:
+            last_sh = highs[ci]
+        if ci >= 0 and swing_lows[ci]:
+            last_sl = lows[ci]
 
-        if not np.isnan(last_sh) and not swing_highs[i]:
+        is_new_sh = (ci >= 0 and swing_highs[ci])
+        is_new_sl = (ci >= 0 and swing_lows[ci])
+
+        if not np.isnan(last_sh) and not is_new_sh:
             if highs[i] > last_sh and closes[i] < last_sh:
                 sweep_up[i] = True
 
-        if not np.isnan(last_sl) and not swing_lows[i]:
+        if not np.isnan(last_sl) and not is_new_sl:
             if lows[i] < last_sl and closes[i] > last_sl:
                 sweep_down[i] = True
 
@@ -664,7 +691,8 @@ def detect_liquidity_sweep(highs: np.ndarray, lows: np.ndarray,
 
 def detect_eqhl(highs: np.ndarray, lows: np.ndarray,
                 swing_highs: np.ndarray, swing_lows: np.ndarray,
-                tol: float = 0.0003, max_age: int = 30) -> tuple:
+                tol: float = 0.0003, max_age: int = 30,
+                delay: int = 0) -> tuple:
     """
     Equal Highs / Equal Lows = 两个 swing point 在 tol 以内
     表示流动性集中区域（止损单密集）。
@@ -673,6 +701,8 @@ def detect_eqhl(highs: np.ndarray, lows: np.ndarray,
     ----------
     tol : 价格容差 (相对)
     max_age : EQH/EQL 最大存活 bar 数 (防止无限传播)
+    delay : int
+        延迟消费 swing point 的 bar 数（消除前视偏差）。
 
     Returns
     -------
@@ -695,8 +725,9 @@ def detect_eqhl(highs: np.ndarray, lows: np.ndarray,
     cur_eql = np.nan
 
     for i in range(T):
-        if swing_highs[i]:
-            h = highs[i]
+        ci = i - delay  # 延迟消费 swing
+        if ci >= 0 and swing_highs[ci]:
+            h = highs[ci]
             if not np.isnan(last_sh):
                 ref = max(last_sh, h)
                 if ref > 0 and abs(h - last_sh) / ref < tol:
@@ -704,8 +735,8 @@ def detect_eqhl(highs: np.ndarray, lows: np.ndarray,
                     cur_eqh = (h + last_sh) / 2.0
             last_sh = h
 
-        if swing_lows[i]:
-            lo = lows[i]
+        if ci >= 0 and swing_lows[ci]:
+            lo = lows[ci]
             if not np.isnan(last_sl):
                 ref = max(last_sl, lo)
                 if ref > 0 and abs(lo - last_sl) / ref < tol:
@@ -792,12 +823,18 @@ def detect_displacement(closes: np.ndarray, highs: np.ndarray,
 
 def detect_premium_discount(closes: np.ndarray,
                             swing_highs: np.ndarray, swing_lows: np.ndarray,
-                            highs: np.ndarray, lows: np.ndarray) -> tuple:
+                            highs: np.ndarray, lows: np.ndarray,
+                            delay: int = 0) -> tuple:
     """
     基于最近 swing range 划分:
       - Premium Zone (上半区, > 50%): 适合做空
       - Discount Zone (下半区, < 50%): 适合做多
       - OTE Zone (Fib 0.618-0.786): 最优入场区
+
+    Parameters
+    ----------
+    delay : int
+        延迟消费 swing point 的 bar 数（消除前视偏差）。
 
     Returns
     -------
@@ -814,10 +851,11 @@ def detect_premium_discount(closes: np.ndarray,
     last_sl = np.nan
 
     for i in range(T):
-        if swing_highs[i]:
-            last_sh = highs[i]
-        if swing_lows[i]:
-            last_sl = lows[i]
+        ci = i - delay  # 延迟消费 swing
+        if ci >= 0 and swing_highs[ci]:
+            last_sh = highs[ci]
+        if ci >= 0 and swing_lows[ci]:
+            last_sl = lows[ci]
 
         if np.isnan(last_sh) or np.isnan(last_sl) or last_sh <= last_sl:
             continue
@@ -879,7 +917,8 @@ def detect_all(opens: np.ndarray, highs: np.ndarray, lows: np.ndarray,
                closes: np.ndarray, volumes: np.ndarray = None,
                swing_n: int = 3, fvg_max_active: int = 20,
                ob_max: int = 20, eqhl_tol: float = 0.0003,
-               disp_threshold: float = 2.0) -> dict:
+               disp_threshold: float = 2.0,
+               causal: bool = False) -> dict:
     """
     一次性运行所有检测器，返回结构化字典。
 
@@ -892,31 +931,35 @@ def detect_all(opens: np.ndarray, highs: np.ndarray, lows: np.ndarray,
     ob_max : 同时跟踪的最大 OB 数量
     eqhl_tol : EQH/EQL 判定容差
     disp_threshold : 位移强度阈值
+    causal : bool
+        True = 消除前视偏差 (swing point 延迟 swing_n 根 bar 才被下游消费)
+        False = 向后兼容，立即消费
 
     Returns
     -------
     dict : 所有检测结果
     """
     T = len(closes)
+    delay = swing_n if causal else 0
 
-    # 1. Swing Points
+    # 1. Swing Points (检测本身不改，只是下游延迟消费)
     swing_highs, swing_lows = detect_swing_points(highs, lows, swing_n)
     last_sh_price, last_sh_idx, last_sl_price, last_sl_idx = \
-        get_swing_levels(highs, lows, swing_highs, swing_lows)
+        get_swing_levels(highs, lows, swing_highs, swing_lows, delay=delay)
 
     # 2. BOS / CHOCH
     bos_up, bos_down, choch_up, choch_down, trend = \
-        detect_bos_choch(closes, highs, lows, swing_highs, swing_lows)
+        detect_bos_choch(closes, highs, lows, swing_highs, swing_lows, delay=delay)
 
-    # 3. FVG
+    # 3. FVG (不用 swing，无需 delay)
     fvg_bull, fvg_bear, fvg_top, fvg_bottom = detect_fvg(highs, lows)
 
-    # 4. FVG Mitigation
+    # 4. FVG Mitigation (不用 swing，无需 delay)
     (price_in_bull_fvg, price_in_bear_fvg, nearest_fvg_dist,
      nearest_fvg_size, fvg_fill_ratio, bull_fvg_count, bear_fvg_count) = \
         detect_fvg_mitigation(closes, highs, lows, fvg_max_active)
 
-    # 5. Order Block
+    # 5. Order Block (用 BOS 输出，BOS 已延迟，无需额外 delay)
     (ob_bull_top, ob_bull_bottom, ob_bear_top, ob_bear_bottom,
      price_in_bull_ob, price_in_bear_ob, ob_bull_age, ob_bear_age) = \
         detect_order_block(opens, highs, lows, closes,
@@ -930,19 +973,22 @@ def detect_all(opens: np.ndarray, highs: np.ndarray, lows: np.ndarray,
 
     # 7. Liquidity Sweep
     sweep_up, sweep_down = \
-        detect_liquidity_sweep(highs, lows, closes, swing_highs, swing_lows)
+        detect_liquidity_sweep(highs, lows, closes, swing_highs, swing_lows,
+                               delay=delay)
 
     # 8. EQH / EQL
     eqh, eql, eqh_price, eql_price = \
-        detect_eqhl(highs, lows, swing_highs, swing_lows, eqhl_tol)
+        detect_eqhl(highs, lows, swing_highs, swing_lows, eqhl_tol,
+                    delay=delay)
 
-    # 9. Displacement
+    # 9. Displacement (不用 swing，无需 delay)
     disp_up, disp_down, disp_strength, atr = \
         detect_displacement(closes, highs, lows, disp_threshold)
 
     # 10. Premium / Discount
     zone, range_pos, in_ote_zone = \
-        detect_premium_discount(closes, swing_highs, swing_lows, highs, lows)
+        detect_premium_discount(closes, swing_highs, swing_lows, highs, lows,
+                                delay=delay)
 
     return {
         # Swing

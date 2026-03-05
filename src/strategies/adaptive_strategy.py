@@ -246,7 +246,7 @@ def strategy_s20_adaptive_momentum(
 
 def strategy_s21_mean_reversion(
     opens, highs, lows, closes, volumes,
-    cooldown=2,
+    cooldown=5,
 ) -> np.ndarray:
     """
     S21: 均值回归策略 (区间震荡市专用)
@@ -255,6 +255,9 @@ def strategy_s21_mean_reversion(
     - 价格在 Bollinger Band 下轨 + RSI 超卖 → 做多
     - 价格在 Bollinger Band 上轨 + RSI 超买 → 做空
     - 趋势不强时才触发 (过滤趋势市)
+
+    v2 修复: vol_ratio阈值(2.0→1.2), trend过滤(0.6→0.4),
+             cooldown(2→5), bar_strength收紧(-0.3→0)
     """
     T = len(closes)
     signals = np.zeros(T, dtype=np.int32)
@@ -266,25 +269,25 @@ def strategy_s21_mean_reversion(
         if i - last_sig < cooldown:
             continue
 
-        # 趋势过滤: 趋势太强不做均值回归
-        if abs(factors['trend_strength'][i]) > 0.6:
+        # 趋势过滤: 趋势太强不做均值回归 (0.4 = 10根中7根同方向)
+        if abs(factors['trend_strength'][i]) > 0.4:
             continue
 
-        # 波动率过滤: 极端波动不做
-        if factors['vol_ratio'][i] > 2.0:
+        # 波动率过滤: 近期波动远超均值不做 (1.2 = 短期vol > 长期vol 20%)
+        if factors['vol_ratio'][i] > 1.2:
             continue
 
         # 做多条件: 超卖 + 在布林下轨
         if (factors['bb_pos'][i] < 0.15 and
             factors['rsi'][i] < 35 and
-            factors['bar_strength'][i] > -0.3):  # 不是强空头K
+            factors['bar_strength'][i] > 0):  # 收阳K线确认
             signals[i] = 1
             last_sig = i
 
         # 做空条件: 超买 + 在布林上轨
         elif (factors['bb_pos'][i] > 0.85 and
               factors['rsi'][i] > 65 and
-              factors['bar_strength'][i] < 0.3):  # 不是强多头K
+              factors['bar_strength'][i] < 0):  # 收阴K线确认
             signals[i] = -1
             last_sig = i
 
@@ -560,9 +563,9 @@ def strategy_s23_candle_adaptive(
                 # 因子值 * 下一根K线方向 → 正相关=好因子
                 corr_sum = 0.0
                 count = 0
-                for j in range(i - lookback, i - 1):
-                    if factor_scores[j, f] != 0 and j + 5 < T:
-                        future_ret = closes[min(j+5, T-1)] - closes[j]
+                for j in range(max(30, i - lookback - 5), i - 5):
+                    if factor_scores[j, f] != 0:
+                        future_ret = closes[j + 5] - closes[j]
                         if closes[j] > 0:
                             future_ret_pct = future_ret / closes[j]
                             corr_sum += factor_scores[j, f] * np.sign(future_ret_pct)

@@ -39,6 +39,7 @@ from src.strategies.adaptive_strategy import (
 from src.backtest.state_machine import (
     backtest_pft, backtest_simple, backtest_atr, backtest_trail, backtest_trail_dynamic,
     backtest_trend_choch, backtest_trend_swing, backtest_trend_state, backtest_trend_hybrid,
+    backtest_trend_be_swing,
 )
 
 # ============================================================================
@@ -92,6 +93,7 @@ TREND_MIN_HOLD_OPTIONS = [3, 5, 10]
 TREND_MAX_HOLD_OPTIONS = [120, 240, 480, 960]
 TREND_SWING_BUFFER_OPTIONS = [0.0005, 0.001, 0.002]
 TREND_NEUTRAL_OPTIONS = [0, 1]
+TREND_BE_TRIGGER_OPTIONS = [0.003, 0.005, 0.01]  # 保本触发阈值: 0.3%, 0.5%, 1%
 
 # SL 缩放: 低波动月自动缩小SL (test-time adjustment, 不影响grid search)
 # 当测试月ATR低于训练期中位数时, SL按比例缩小
@@ -516,6 +518,7 @@ def rolling_optimize(
     dd_min_ratio: float = 0.25,      # 最小仓位比例 (25%)
     sqrt_sizing: bool = False,       # 平方根仓位缩放
     mtf_filter: bool = False,        # 多周期趋势过滤 (日线EMA10)
+    mtf_mode: str = 'ema5m',         # MTF模式: 'daily_prev' | 'ema5m' | 'none'
     vol_filter: bool = False,        # 波动性自适应仓位 (低波动减仓)
     chase_filter: bool = False,       # 追涨追跌过滤 (dir_consistency > 0.6 跳过)
     night_filter: bool = False,       # 夜盘过滤 (21:00-24:00 跳过信号)
@@ -551,19 +554,20 @@ def rolling_optimize(
 
     # 趋势跟随出场参数网格 (Mode 5-8)
     param_grid_choch = list(product(TREND_SL_OPTIONS, TREND_MIN_HOLD_OPTIONS, TREND_MAX_HOLD_OPTIONS))
-    param_grid_swing = list(product(TREND_SL_OPTIONS[:4], TREND_SWING_BUFFER_OPTIONS, TREND_MAX_HOLD_OPTIONS))
+    param_grid_swing = list(product(TREND_SL_OPTIONS[:4], TREND_SWING_BUFFER_OPTIONS, TREND_MIN_HOLD_OPTIONS[:2], TREND_MAX_HOLD_OPTIONS))
     param_grid_tstate = list(product(TREND_SL_OPTIONS[:4], TREND_MIN_HOLD_OPTIONS, TREND_NEUTRAL_OPTIONS, TREND_MAX_HOLD_OPTIONS))
     param_grid_hybrid = list(product(TREND_SL_OPTIONS[:3], TREND_SWING_BUFFER_OPTIONS[:2], TREND_MIN_HOLD_OPTIONS[:2], TREND_MAX_HOLD_OPTIONS[1:]))
+    param_grid_be_swing = list(product(TREND_SL_OPTIONS[:4], TREND_BE_TRIGGER_OPTIONS, TREND_SWING_BUFFER_OPTIONS[:2], TREND_MIN_HOLD_OPTIONS[:2], TREND_MAX_HOLD_OPTIONS[1:]))
 
-    # ====== MTF: 日线趋势 (全量预计算) ======
+    # ====== MTF: 趋势过滤 (多种模式) ======
     daily_trend = None
-    if mtf_filter:
-        # 从 5min/1min 数据中计算日线 EMA10 趋势 (EMA10 > EMA20 > EMA30)
+    _mtf = mtf_mode if mtf_filter else 'none'
+    if _mtf == 'daily_prev':
+        # 日线EMA(10) — 用前一日趋势, 避免日内前视偏差
         ts = pd.to_datetime(timestamps)
         daily_close = pd.Series(closes, index=ts).resample('1D').last().dropna()
         ema_d = daily_close.ewm(span=10, adjust=False).mean()
         trend_d = np.where(daily_close > ema_d, 1, -1)
-        # 映射回原始 bar 级别
         daily_trend = np.zeros(len(closes), dtype=np.int32)
         dates_d = daily_close.index
         trend_vals = trend_d
@@ -571,11 +575,26 @@ def rolling_optimize(
         for i in range(len(closes)):
             while jd < len(dates_d) - 1 and dates_d[jd + 1] <= ts[i]:
                 jd += 1
-            daily_trend[i] = trend_vals[jd]
+            daily_trend[i] = trend_vals[max(0, jd - 1)]
         n_bull = np.sum(daily_trend == 1)
         n_bear = np.sum(daily_trend == -1)
-        print(f"  MTF 日线趋势: 多头={n_bull} bars ({n_bull/len(closes)*100:.0f}%), "
-              f"空头={n_bear} bars ({n_bear/len(closes)*100:.0f}%)")
+        print(f"  MTF模式: daily_prev — 多头={n_bull} ({n_bull/len(closes)*100:.0f}%), "
+              f"空头={n_bear} ({n_bear/len(closes)*100:.0f}%)")
+    elif _mtf == 'ema5m':
+        # 5分钟EMA交叉 — 完全因果, 无日线前视
+        ema_fast_span = 120   # 120×5min = 10小时 ≈ 2交易日
+        ema_slow_span = 480   # 480×5min = 40小时 ≈ 8交易日
+        ema_fast = pd.Series(closes).ewm(span=ema_fast_span, adjust=False).mean().values
+        ema_slow = pd.Series(closes).ewm(span=ema_slow_span, adjust=False).mean().values
+        daily_trend = np.where(ema_fast > ema_slow, 1, -1).astype(np.int32)
+        daily_trend[:ema_slow_span] = 0  # warmup期不过滤
+        n_bull = np.sum(daily_trend == 1)
+        n_bear = np.sum(daily_trend == -1)
+        print(f"  MTF模式: ema5m (EMA{ema_fast_span}/{ema_slow_span}) — "
+              f"多头={n_bull} ({n_bull/len(closes)*100:.0f}%), "
+              f"空头={n_bear} ({n_bear/len(closes)*100:.0f}%)")
+    else:
+        print(f"  MTF模式: none (无趋势过滤)")
 
     # ====== 波动性过滤: 滚动20日价格范围 (全量预计算) ======
     vol_filter_arr = None
@@ -617,7 +636,8 @@ def rolling_optimize(
             continue
         for swing_n in SWING_N_OPTIONS:
             det = detect_all(opens[s:e], highs[s:e], lows[s:e],
-                            closes[s:e], volumes[s:e], swing_n=swing_n)
+                            closes[s:e], volumes[s:e], swing_n=swing_n,
+                            causal=True)
             sig = generate_single_strategy_signals(
                 strategy_name, det,
                 opens[s:e], highs[s:e], lows[s:e], closes[s:e],
@@ -629,6 +649,8 @@ def rolling_optimize(
             if daily_trend is not None:
                 dt_slice = daily_trend[s:e]
                 for ii in range(len(sig)):
+                    if dt_slice[ii] == 0:
+                        continue  # warmup期间不过滤
                     if sig[ii] == 1 and dt_slice[ii] != 1:
                         sig[ii] = 0
                     elif sig[ii] == -1 and dt_slice[ii] != -1:
@@ -829,8 +851,8 @@ def rolling_optimize(
                     score = _score_monthly_rets(monthly_rets)
                     param_scores.append((score, ('choch', swing_n, sl, min_h, max_hold)))
 
-            # 模式6: 摆动点移动止损
-            for sl, buf, max_hold in param_grid_swing:
+            # 模式6: 摆动点移动止损 (with min_hold)
+            for sl, buf, min_h, max_hold in param_grid_swing:
                 monthly_rets = []
                 for val_idx in range(max(0, test_idx - train_months), test_idx):
                     val_month = unique_months[val_idx]
@@ -841,7 +863,7 @@ def rolling_optimize(
                     ret, nt, nw, _ = backtest_trend_swing(
                         o_arr, c_arr, h_arr, l_arr, sig,
                         t_last_sh, t_last_sl,
-                        sl=sl, swing_buffer=buf, max_hold=max_hold,
+                        sl=sl, swing_buffer=buf, min_hold=min_h, max_hold=max_hold,
                         commission=COST_PER_SIDE)
                     if nt > 0:
                         pnl_per_lot = ret * avg_p * MULTIPLIER
@@ -850,7 +872,7 @@ def rolling_optimize(
                         monthly_rets.append(month_ret)
                 if len(monthly_rets) >= 3:
                     score = _score_monthly_rets(monthly_rets)
-                    param_scores.append((score, ('swing', swing_n, sl, buf, max_hold)))
+                    param_scores.append((score, ('swing', swing_n, sl, buf, min_h, max_hold)))
 
             # 模式7: 趋势状态持仓
             for sl, min_h, neutral, max_hold in param_grid_tstate:
@@ -897,6 +919,29 @@ def rolling_optimize(
                 if len(monthly_rets) >= 3:
                     score = _score_monthly_rets(monthly_rets)
                     param_scores.append((score, ('hybrid', swing_n, sl, buf, min_h, max_hold)))
+
+            # 模式9: 保本+Swing追踪+CHOCH出场
+            for sl, be_trig, buf, min_h, max_hold in param_grid_be_swing:
+                monthly_rets = []
+                for val_idx in range(max(0, test_idx - train_months), test_idx):
+                    val_month = unique_months[val_idx]
+                    key = (val_month, swing_n)
+                    if key not in sig_cache:
+                        continue
+                    sig, o_arr, c_arr, h_arr, l_arr, avg_p, atr_arr, t_choch_up, t_choch_down, t_trend, t_last_sh, t_last_sl = sig_cache[key]
+                    ret, nt, nw, _ = backtest_trend_be_swing(
+                        o_arr, c_arr, h_arr, l_arr, sig,
+                        t_choch_up, t_choch_down, t_last_sh, t_last_sl,
+                        sl=sl, be_trigger=be_trig, swing_buffer=buf, min_hold=min_h,
+                        max_hold=max_hold, commission=COST_PER_SIDE)
+                    if nt > 0:
+                        pnl_per_lot = ret * avg_p * MULTIPLIER
+                        n_lots_t = max(1, min(MAX_LOTS, int(INITIAL_CAPITAL / MARGIN_PER_LOT)))
+                        month_ret = pnl_per_lot * n_lots_t / INITIAL_CAPITAL
+                        monthly_rets.append(month_ret)
+                if len(monthly_rets) >= 3:
+                    score = _score_monthly_rets(monthly_rets)
+                    param_scores.append((score, ('be_swing', swing_n, sl, be_trig, buf, min_h, max_hold)))
 
         # 取 top-K 参数组 (按训练收益排序)
         param_scores.sort(key=lambda x: x[0], reverse=True)
@@ -988,14 +1033,15 @@ def rolling_optimize(
                     sl=sl, min_hold=min_h, max_hold=max_hold,
                     commission=COST_PER_SIDE)
             elif mode == 'swing':
-                # ('swing', swing_n, sl, buffer, max_hold)
+                # ('swing', swing_n, sl, buffer, min_hold, max_hold)
                 sl = params[2] * sl_scale
                 buf = params[3]
-                max_hold = params[4]
+                min_h = params[4]
+                max_hold = params[5]
                 ret_k, n_t_k, n_w_k, _ = backtest_trend_swing(
                     o_arr, c_arr, h_arr, l_arr, sig,
                     t_last_sh, t_last_sl,
-                    sl=sl, swing_buffer=buf, max_hold=max_hold,
+                    sl=sl, swing_buffer=buf, min_hold=min_h, max_hold=max_hold,
                     commission=COST_PER_SIDE)
             elif mode == 'tstate':
                 # ('tstate', swing_n, sl, min_hold, neutral, max_hold)
@@ -1018,6 +1064,18 @@ def rolling_optimize(
                     o_arr, c_arr, h_arr, l_arr, sig,
                     t_choch_up, t_choch_down, t_last_sh, t_last_sl,
                     sl=sl, swing_buffer=buf, min_hold=min_h,
+                    max_hold=max_hold, commission=COST_PER_SIDE)
+            elif mode == 'be_swing':
+                # ('be_swing', swing_n, sl, be_trigger, buffer, min_hold, max_hold)
+                sl = params[2] * sl_scale
+                be_trig = params[3]
+                buf = params[4]
+                min_h = params[5]
+                max_hold = params[6]
+                ret_k, n_t_k, n_w_k, _ = backtest_trend_be_swing(
+                    o_arr, c_arr, h_arr, l_arr, sig,
+                    t_choch_up, t_choch_down, t_last_sh, t_last_sl,
+                    sl=sl, be_trigger=be_trig, swing_buffer=buf, min_hold=min_h,
                     max_hold=max_hold, commission=COST_PER_SIDE)
             else:
                 sl = params[2]
@@ -1121,6 +1179,9 @@ def rolling_optimize(
             elif m0 == 'hybrid':
                 sl0, buf0, mh_min, mh0 = top1[2], top1[3], top1[4], top1[5]
                 params_str = f"HYB:SL={sl0*100:.1f}%,B={buf0*100:.2f}%,mH={mh_min}"
+            elif m0 == 'be_swing':
+                sl0, be0, buf0, mh_min, mh0 = top1[2], top1[3], top1[4], top1[5], top1[6]
+                params_str = f"BES:SL={sl0*100:.1f}%,BE={be0*100:.1f}%,B={buf0*100:.2f}%"
             else:
                 sl0, tp0, mh0 = top1[2], top1[3], top1[4]
                 params_str = f"SL={sl0*100:.1f}%,TP={tp0*100:.1f}%"
@@ -1218,7 +1279,8 @@ def fixed_params_backtest(
     sl: float = 0.01, tp: float = 0.03, max_hold: int = 240,
 ) -> dict:
     """固定参数全量回测 (快速评估)"""
-    det = detect_all(opens, highs, lows, closes, volumes, swing_n=swing_n)
+    det = detect_all(opens, highs, lows, closes, volumes, swing_n=swing_n,
+                     causal=True)
     sig = generate_single_strategy_signals(
         strategy_name, det, opens, highs, lows, closes, volumes, timestamps)
 
@@ -1462,7 +1524,10 @@ def main():
     parser.add_argument('--data', type=str, default=str(DATA_PATH), help='数据路径')
     parser.add_argument('--dd-control', action='store_true', help='启用回撤控制')
     parser.add_argument('--sqrt-sizing', action='store_true', help='平方根仓位缩放')
-    parser.add_argument('--mtf', action='store_true', help='多周期趋势过滤 (日线EMA10)')
+    parser.add_argument('--mtf', action='store_true', help='多周期趋势过滤')
+    parser.add_argument('--mtf-mode', type=str, default='ema5m',
+                        choices=['daily_prev', 'ema5m', 'none'],
+                        help='MTF趋势过滤模式 (默认ema5m)')
     parser.add_argument('--vol-filter', action='store_true',
                         help='波动性自适应仓位 (低波动减仓)')
     parser.add_argument('--chase-filter', action='store_true',
@@ -1534,7 +1599,7 @@ def main():
     if args.verify or args.plot:
         print(f"\n运行 SMC 检测器 (swing_n={args.swing_n})...")
         det = detect_all(opens, highs, lows, closes, volumes,
-                         swing_n=args.swing_n)
+                         swing_n=args.swing_n, causal=True)
         verify_detectors(det, T, closes)
 
         if args.plot:
@@ -1579,7 +1644,8 @@ def main():
 
         # 组合策略 (投票)
         print(f"\n组合策略 (多数投票):")
-        det = detect_all(opens, highs, lows, closes, volumes, swing_n=args.swing_n)
+        det = detect_all(opens, highs, lows, closes, volumes, swing_n=args.swing_n,
+                         causal=True)
         for min_v in [2, 3]:
             combined_sig = generate_combined_signals(
                 det, opens, highs, lows, closes, volumes, timestamps,
@@ -1645,6 +1711,7 @@ def main():
                     dd_control=args.dd_control,
                     sqrt_sizing=args.sqrt_sizing,
                     mtf_filter=args.mtf,
+                    mtf_mode=args.mtf_mode,
                     vol_filter=args.vol_filter,
                     chase_filter=args.chase_filter,
                     night_filter=args.night_filter,
