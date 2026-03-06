@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 """
-V10 Final — V9方向策略 + 双配对价差套利 Portfolio
+V10 Final — V9方向策略 + 三配对价差套利 Portfolio
 ====================================================
 组合逻辑:
-  1. V9满仓: 6 pattern detectors × 4品种 (EB6/RB6/J1/I1)
+  1. V9满仓: 6 pattern detectors × 4品种 (EB4/RB6/J1/I1)
      - SL=2.5×ATR, TP=SL×6.0, MH=80bar, 仅日盘15min
   2. V4g-RBI: RB-I标准化价差Z-score均值回归 (日线)
      - z_entry=1.5, z_exit=0.3, lookback=90, max_hold=20日, RB4+I1手
   3. V4g-JJM: J-JM标准化价差Z-score均值回归 (日线)
      - z_entry=2.5, z_exit=0.3, lookback=90, max_hold=20日, J1+JM1手
-  4. 三策略近零相关, 价差对冲V9弱年
+  4. V4g-RBHC: RB-HC标准化价差Z-score均值回归 (日线)
+     - z_entry=2.5, z_exit=0.3, lookback=90, max_hold=20日, RB2+HC2手
+  5. 四策略近零相关, 价差对冲V9弱年
 
 诚实执行: gap-open填充 + SL-first + 1tick滑点 + next-bar-open入场
          mark-to-market回撤(逐bar浮动盈亏)
@@ -31,7 +33,7 @@ COST_PER_SIDE = 0.00021  # V4g: commission + slippage
 # V9 配置
 # ============================================================================
 V9_SYMBOLS = {
-    'EB9999.XDCE':  {'name': 'EB', 'mult': 5,   'tick': 1.0,  'lots': 6, 'margin': 4000},
+    'EB9999.XDCE':  {'name': 'EB', 'mult': 5,   'tick': 1.0,  'lots': 4, 'margin': 4000},
     'RB9999.XSGE':  {'name': 'RB', 'mult': 10,  'tick': 1.0,  'lots': 6, 'margin': 3500},
     'J9999.XDCE':   {'name': 'J',  'mult': 100, 'tick': 0.5,  'lots': 1, 'margin': 12000},
     'I9999.XDCE':   {'name': 'I',  'mult': 100, 'tick': 0.5,  'lots': 1, 'margin': 10000},
@@ -55,6 +57,14 @@ SPREAD_PAIRS = {
         'mult1': 100, 'mult2': 60,
         'lots1': 1, 'lots2': 1,
         'margin1': 12000, 'margin2': 8000,
+        'z_entry': 2.5, 'z_exit': 0.3,
+        'lookback': 90, 'max_hold': 20,
+    },
+    'RB-HC': {
+        'sym1': 'RB9999.XSGE', 'sym2': 'HC9999.XSGE',
+        'mult1': 10, 'mult2': 10,
+        'lots1': 2, 'lots2': 2,
+        'margin1': 3500, 'margin2': 3500,
         'z_entry': 2.5, 'z_exit': 0.3,
         'lookback': 90, 'max_hold': 20,
     },
@@ -510,7 +520,7 @@ def margin_analysis(all_trades):
 def main():
     print('=' * 110)
     print('  V10 Final — V9方向策略 + 双配对价差套利 Portfolio')
-    print(f'  V9: 6 detectors | {len(V9_SYMBOLS)}品种 | SL={SL_ATR} TP={TP_ATR} MH={MAX_HOLD} | 仅日盘')
+    print(f'  V9: 6 detectors | {len(V9_SYMBOLS)}品种 | SL={SL_ATR} TP={TP_ATR} MH={MAX_HOLD} | 仅日盘 | {len(SPREAD_PAIRS)}价差对')
     for pn, pc in SPREAD_PAIRS.items():
         print(f'  {pn}: Z_in={pc["z_entry"]} Z_out={pc["z_exit"]} '
               f'LB={pc["lookback"]} MH={pc["max_hold"]}日 | {pc["lots1"]}+{pc["lots2"]}手')

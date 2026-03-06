@@ -2,7 +2,7 @@
 """
 V10 实盘信号生成器
 - 读取最新数据, 检测当前信号状态
-- 输出: 当前持仓、待执行信号、V4g价差状态
+- 输出: 当前持仓、待执行信号、所有价差配对状态
 - 设计为每15分钟运行一次
 
 用法:
@@ -16,13 +16,11 @@ import argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from backtest_v10_final import (
     load_and_resample, load_daily, compute_indicators, detect_all_6,
-    V9_SYMBOLS, SL_ATR, TP_ATR, MAX_HOLD,
-    V4G_Z_ENTRY, V4G_Z_EXIT, V4G_LOOKBACK, V4G_MAX_HOLD,
-    V4G_RB_LOTS, V4G_I_LOTS,
+    V9_SYMBOLS, SL_ATR, TP_ATR, MAX_HOLD, SPREAD_PAIRS,
 )
 
 DATA_DIR = Path(r'C:\ProcessedData\main_continuous')
@@ -30,7 +28,6 @@ DATA_DIR = Path(r'C:\ProcessedData\main_continuous')
 def get_v9_status():
     """获取V9各品种的当前信号状态"""
     results = []
-    now = datetime.now()
 
     for symbol, cfg in V9_SYMBOLS.items():
         try:
@@ -50,22 +47,19 @@ def get_v9_status():
         ind = compute_indicators(o, h, l, c, nn)
         sigs = detect_all_6(ind, o, h, l, c, vol, nn)
 
-        # 最后数据时间
         last_time = ts.iloc[-1]
         last_close = c[-1]
         last_atr = ind['atr'][-1]
         last_ema = ind['ema20'][-1]
 
-        # 最近的信号
         recent_sigs = []
-        for s in sigs[-20:]:  # 最近20个信号
+        for s in sigs[-20:]:
             idx = s[0]
             if idx < nn:
                 sig_time = ts.iloc[idx]
                 sig_dir = '多' if s[1] == 1 else '空'
                 sig_sl = s[2]
 
-                # EMA过滤
                 ema_ok = True
                 if s[1] == 1 and c[idx] < ind['ema20'][idx]:
                     ema_ok = False
@@ -78,7 +72,6 @@ def get_v9_status():
                     'price': c[idx],
                 })
 
-        # 模拟当前是否有持仓 (基于最后MAX_HOLD*2个bar)
         pos_info = None
         sig_set = {}
         for s in sigs:
@@ -89,7 +82,7 @@ def get_v9_status():
         for i in range(max(30, nn - MAX_HOLD * 3), nn):
             if pos != 0:
                 bh = i - eb
-                xp = 0.0; reason = ''
+                reason = ''
                 if pos == 1:
                     if l[i] <= sp: reason = 'sl'
                     elif h[i] >= tp_price: reason = 'tp'
@@ -143,59 +136,65 @@ def get_v9_status():
 
     return results
 
-def get_v4g_status():
-    """获取V4g价差当前状态"""
+def get_spread_status(pair_name, cfg):
+    """获取单个价差配对当前状态"""
     try:
-        df_rb = load_daily('RB9999.XSGE')
-        df_i = load_daily('I9999.XDCE')
+        df1 = load_daily(cfg['sym1'])
+        df2 = load_daily(cfg['sym2'])
     except Exception as e:
         return {'error': str(e)}
 
-    rb_dates = pd.to_datetime(df_rb['datetime']).dt.date
-    i_dates = pd.to_datetime(df_i['datetime']).dt.date
+    dates1 = pd.to_datetime(df1['datetime']).dt.date
+    dates2 = pd.to_datetime(df2['datetime']).dt.date
 
-    df_rb_idx = df_rb.set_index(rb_dates)
-    df_i_idx = df_i.set_index(i_dates)
-    common = sorted(set(df_rb_idx.index) & set(df_i_idx.index))
+    df1_idx = df1.set_index(dates1)
+    df2_idx = df2.set_index(dates2)
+    common = sorted(set(df1_idx.index) & set(df2_idx.index))
 
-    if len(common) < V4G_LOOKBACK + 10:
+    lookback = cfg['lookback']
+    if len(common) < lookback + 10:
         return {'error': '数据不足'}
 
-    rb_c = np.array([df_rb_idx.loc[d, 'close'] for d in common], dtype=np.float64)
-    i_c = np.array([df_i_idx.loc[d, 'close'] for d in common], dtype=np.float64)
+    c1 = np.array([df1_idx.loc[d, 'close'] for d in common], dtype=np.float64)
+    c2 = np.array([df2_idx.loc[d, 'close'] for d in common], dtype=np.float64)
 
-    rb_m = pd.Series(rb_c).rolling(V4G_LOOKBACK, min_periods=V4G_LOOKBACK).mean().values
-    rb_s = pd.Series(rb_c).rolling(V4G_LOOKBACK, min_periods=V4G_LOOKBACK).std().values
-    i_m = pd.Series(i_c).rolling(V4G_LOOKBACK, min_periods=V4G_LOOKBACK).mean().values
-    i_s = pd.Series(i_c).rolling(V4G_LOOKBACK, min_periods=V4G_LOOKBACK).std().values
+    m1 = pd.Series(c1).rolling(lookback, min_periods=lookback).mean().values
+    s1 = pd.Series(c1).rolling(lookback, min_periods=lookback).std().values
+    m2 = pd.Series(c2).rolling(lookback, min_periods=lookback).mean().values
+    s2 = pd.Series(c2).rolling(lookback, min_periods=lookback).std().values
 
-    rb_z = np.where(rb_s > 0, (rb_c - rb_m) / rb_s, 0)
-    i_z = np.where(i_s > 0, (i_c - i_m) / i_s, 0)
-    spread = rb_z - i_z
+    z1 = np.where(s1 > 0, (c1 - m1) / s1, 0)
+    z2 = np.where(s2 > 0, (c2 - m2) / s2, 0)
+    spread = z1 - z2
 
-    sp_m = pd.Series(spread).rolling(V4G_LOOKBACK, min_periods=V4G_LOOKBACK).mean().values
-    sp_s = pd.Series(spread).rolling(V4G_LOOKBACK, min_periods=V4G_LOOKBACK).std().values
+    sp_m = pd.Series(spread).rolling(lookback, min_periods=lookback).mean().values
+    sp_s = pd.Series(spread).rolling(lookback, min_periods=lookback).std().values
     sp_z = np.where(sp_s > 0, (spread - sp_m) / sp_s, 0)
 
     last_idx = len(common) - 1
     current_z = sp_z[last_idx]
     current_date = common[last_idx]
+    z_entry = cfg['z_entry']
 
-    # 信号判断
+    sym1_name = cfg['sym1'].split('9999')[0]
+    sym2_name = cfg['sym2'].split('9999')[0]
+
     signal = 'none'
-    if current_z > V4G_Z_ENTRY:
-        signal = f'做空价差 (Z={current_z:.2f} > {V4G_Z_ENTRY}): 空RB{V4G_RB_LOTS}+多I{V4G_I_LOTS}'
-    elif current_z < -V4G_Z_ENTRY:
-        signal = f'做多价差 (Z={current_z:.2f} < -{V4G_Z_ENTRY}): 多RB{V4G_RB_LOTS}+空I{V4G_I_LOTS}'
+    if current_z > z_entry:
+        signal = (f'做空价差 (Z={current_z:.2f} > {z_entry}): '
+                  f'空{sym1_name}{cfg["lots1"]}+多{sym2_name}{cfg["lots2"]}')
+    elif current_z < -z_entry:
+        signal = (f'做多价差 (Z={current_z:.2f} < -{z_entry}): '
+                  f'多{sym1_name}{cfg["lots1"]}+空{sym2_name}{cfg["lots2"]}')
 
-    # 近5日Z-score
-    recent_z = [(common[i], sp_z[i]) for i in range(max(V4G_LOOKBACK, last_idx - 4), last_idx + 1)]
+    recent_z = [(common[i], sp_z[i])
+                for i in range(max(lookback, last_idx - 4), last_idx + 1)]
 
     return {
         'date': current_date,
-        'rb_close': rb_c[last_idx],
-        'i_close': i_c[last_idx],
+        'c1': c1[last_idx], 'c2': c2[last_idx],
         'z_score': current_z,
+        'z_entry': z_entry,
         'signal': signal,
         'recent_z': recent_z,
     }
@@ -239,21 +238,25 @@ def main():
                 print(f'      {s["time"]} | {s["dir"]} | SL={s["sl_ref"]:.1f} | '
                       f'Price={s["price"]:.1f} | {ema_tag}')
 
-    # V4g 状态
-    print(f'\n  ─── V4g RB-I价差套利 ───')
-    v4g = get_v4g_status()
-    if 'error' in v4g:
-        print(f'  错误: {v4g["error"]}')
-    else:
-        print(f'  日期: {v4g["date"]} | RB={v4g["rb_close"]:.0f} | I={v4g["i_close"]:.0f}')
-        print(f'  Z-score: {v4g["z_score"]:+.3f} (入场阈值: ±{V4G_Z_ENTRY})')
-        print(f'  信号: {v4g["signal"]}')
-        if v4g['recent_z']:
-            print(f'  近期Z-score:')
-            for d, z in v4g['recent_z']:
-                bar = '█' * min(40, int(abs(z) * 10))
-                side = '+' if z > 0 else '-'
-                print(f'    {d} | {z:+.3f} {side}{bar}')
+    # 价差套利状态 (所有配对)
+    for pair_name, pair_cfg in SPREAD_PAIRS.items():
+        sym1_name = pair_cfg['sym1'].split('9999')[0]
+        sym2_name = pair_cfg['sym2'].split('9999')[0]
+        print(f'\n  ─── {pair_name} 价差套利 ({sym1_name}{pair_cfg["lots1"]}+{sym2_name}{pair_cfg["lots2"]}) ───')
+
+        status = get_spread_status(pair_name, pair_cfg)
+        if 'error' in status:
+            print(f'  错误: {status["error"]}')
+        else:
+            print(f'  日期: {status["date"]} | {sym1_name}={status["c1"]:.0f} | {sym2_name}={status["c2"]:.0f}')
+            print(f'  Z-score: {status["z_score"]:+.3f} (入场阈值: ±{status["z_entry"]})')
+            print(f'  信号: {status["signal"]}')
+            if status['recent_z']:
+                print(f'  近期Z-score:')
+                for d, z in status['recent_z']:
+                    bar = '█' * min(40, int(abs(z) * 10))
+                    side = '+' if z > 0 else '-'
+                    print(f'    {d} | {z:+.3f} {side}{bar}')
 
     print(f'\n{"=" * 90}')
 
