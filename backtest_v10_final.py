@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 """
-V10 Final — V9方向策略 + V4g价差套利 组合Portfolio
+V10 Final — V9方向策略 + 双配对价差套利 Portfolio
 ====================================================
 组合逻辑:
   1. V9满仓: 6 pattern detectors × 4品种 (EB6/RB6/J1/I1)
      - SL=2.5×ATR, TP=SL×6.0, MH=80bar, 仅日盘15min
-     - 年化≈95%, Sh≈0.84, DD≈21%
-  2. V4g: RB-I标准化价差Z-score均值回归 (日线)
-     - z_entry=1.5, z_exit=0.3, lookback=90, max_hold=20日
-     - rb_lots=4, i_lots=1, 年化≈31%, Sh≈2.5
-  3. 近零相关(-0.016), V4g对冲V9弱年(2023/2025)
-  4. 合计保证金≈91K / 100K资本
+  2. V4g-RBI: RB-I标准化价差Z-score均值回归 (日线)
+     - z_entry=1.5, z_exit=0.3, lookback=90, max_hold=20日, RB4+I1手
+  3. V4g-JJM: J-JM标准化价差Z-score均值回归 (日线)
+     - z_entry=2.5, z_exit=0.3, lookback=90, max_hold=20日, J1+JM1手
+  4. 三策略近零相关, 价差对冲V9弱年
 
 诚实执行: gap-open填充 + SL-first + 1tick滑点 + next-bar-open入场
          mark-to-market回撤(逐bar浮动盈亏)
@@ -41,15 +40,25 @@ TP_ATR = 6.0
 SL_ATR = 2.5
 MAX_HOLD = 80
 
-# V4g 配置
-V4G_Z_ENTRY = 1.5
-V4G_Z_EXIT = 0.3
-V4G_LOOKBACK = 90
-V4G_MAX_HOLD = 20
-V4G_RB_LOTS = 4
-V4G_I_LOTS = 1
-V4G_RB_MARGIN = 3500
-V4G_I_MARGIN = 10000
+# V4g 配对配置
+SPREAD_PAIRS = {
+    'RB-I': {
+        'sym1': 'RB9999.XSGE', 'sym2': 'I9999.XDCE',
+        'mult1': 10, 'mult2': 100,
+        'lots1': 4, 'lots2': 1,
+        'margin1': 3500, 'margin2': 10000,
+        'z_entry': 1.5, 'z_exit': 0.3,
+        'lookback': 90, 'max_hold': 20,
+    },
+    'J-JM': {
+        'sym1': 'J9999.XDCE', 'sym2': 'JM9999.XDCE',
+        'mult1': 100, 'mult2': 60,
+        'lots1': 1, 'lots2': 1,
+        'margin1': 12000, 'margin2': 8000,
+        'z_entry': 2.5, 'z_exit': 0.3,
+        'lookback': 90, 'max_hold': 20,
+    },
+}
 
 # ============================================================================
 # 数据加载
@@ -322,42 +331,46 @@ def backtest_v9(signals, opens, highs, lows, closes, ind, n, ts,
     return trades, equity_bars
 
 # ============================================================================
-# V4g 价差套利引擎
+# 价差套利引擎 (通用, 支持任意配对)
 # ============================================================================
-def run_v4g(z_entry=V4G_Z_ENTRY, z_exit=V4G_Z_EXIT, lookback=V4G_LOOKBACK,
-            max_hold_days=V4G_MAX_HOLD, rb_lots=V4G_RB_LOTS, i_lots=V4G_I_LOTS):
-    df_rb = load_daily('RB9999.XSGE')
-    df_i = load_daily('I9999.XDCE')
+def run_spread_pair(pair_name, cfg):
+    """运行单个价差配对回测"""
+    df1 = load_daily(cfg['sym1'])
+    df2 = load_daily(cfg['sym2'])
 
-    rb_dates = pd.to_datetime(df_rb['datetime']).dt.date
-    i_dates = pd.to_datetime(df_i['datetime']).dt.date
+    dates1 = pd.to_datetime(df1['datetime']).dt.date
+    dates2 = pd.to_datetime(df2['datetime']).dt.date
+    df1_idx = df1.set_index(dates1)
+    df2_idx = df2.set_index(dates2)
+    common_dates = sorted(set(df1_idx.index) & set(df2_idx.index))
 
-    df_rb_idx = df_rb.set_index(rb_dates)
-    df_i_idx = df_i.set_index(i_dates)
-    common_dates = sorted(set(df_rb_idx.index) & set(df_i_idx.index))
+    c1 = np.array([df1_idx.loc[d, 'close'] for d in common_dates], dtype=np.float64)
+    c2 = np.array([df2_idx.loc[d, 'close'] for d in common_dates], dtype=np.float64)
 
-    rb_close = np.array([df_rb_idx.loc[d, 'close'] for d in common_dates], dtype=np.float64)
-    i_close = np.array([df_i_idx.loc[d, 'close'] for d in common_dates], dtype=np.float64)
+    lookback = cfg['lookback']
+    m1 = pd.Series(c1).rolling(lookback, min_periods=lookback).mean().values
+    s1 = pd.Series(c1).rolling(lookback, min_periods=lookback).std().values
+    m2 = pd.Series(c2).rolling(lookback, min_periods=lookback).mean().values
+    s2 = pd.Series(c2).rolling(lookback, min_periods=lookback).std().values
 
-    rb_mean = pd.Series(rb_close).rolling(lookback, min_periods=lookback).mean().values
-    rb_std = pd.Series(rb_close).rolling(lookback, min_periods=lookback).std().values
-    i_mean = pd.Series(i_close).rolling(lookback, min_periods=lookback).mean().values
-    i_std = pd.Series(i_close).rolling(lookback, min_periods=lookback).std().values
+    z1 = np.where(s1 > 0, (c1 - m1) / s1, 0)
+    z2 = np.where(s2 > 0, (c2 - m2) / s2, 0)
+    spread = z1 - z2
 
-    rb_z = np.where(rb_std > 0, (rb_close - rb_mean) / rb_std, 0)
-    i_z = np.where(i_std > 0, (i_close - i_mean) / i_std, 0)
-    spread = rb_z - i_z
+    sp_m = pd.Series(spread).rolling(lookback, min_periods=lookback).mean().values
+    sp_s = pd.Series(spread).rolling(lookback, min_periods=lookback).std().values
+    sp_z = np.where(sp_s > 0, (spread - sp_m) / sp_s, 0)
 
-    sp_mean = pd.Series(spread).rolling(lookback, min_periods=lookback).mean().values
-    sp_std = pd.Series(spread).rolling(lookback, min_periods=lookback).std().values
-    sp_z = np.where(sp_std > 0, (spread - sp_mean) / sp_std, 0)
-
-    rb_mult = 10; i_mult = 100
+    mult1, mult2 = cfg['mult1'], cfg['mult2']
+    lots1, lots2 = cfg['lots1'], cfg['lots2']
+    z_entry, z_exit = cfg['z_entry'], cfg['z_exit']
+    max_hold = cfg['max_hold']
+    pair_margin = lots1 * cfg['margin1'] + lots2 * cfg['margin2']
 
     trades = []
     daily_equity = []
     pos = 0; entry_day_count = 0
-    entry_rb = entry_i = 0.0
+    entry_c1 = entry_c2 = 0.0
     realized = 0.0
 
     for d_idx in range(lookback, len(common_dates)):
@@ -372,38 +385,37 @@ def run_v4g(z_entry=V4G_Z_ENTRY, z_exit=V4G_Z_EXIT, lookback=V4G_LOOKBACK,
                 should_exit = True; exit_reason = 'z_revert'
             elif pos == -1 and z <= z_exit:
                 should_exit = True; exit_reason = 'z_revert'
-            if not should_exit and entry_day_count >= max_hold_days:
+            if not should_exit and entry_day_count >= max_hold:
                 should_exit = True; exit_reason = 'max_hold'
 
             if should_exit:
-                exit_rb = rb_close[d_idx]; exit_i = i_close[d_idx]
-                rb_pnl = (exit_rb - entry_rb) * pos * rb_mult * rb_lots
-                i_pnl = (exit_i - entry_i) * (-pos) * i_mult * i_lots
-                rb_cost = 2 * COST_PER_SIDE * entry_rb * rb_mult * rb_lots
-                i_cost = 2 * COST_PER_SIDE * entry_i * i_mult * i_lots
-                net = rb_pnl + i_pnl - rb_cost - i_cost
+                p1 = (c1[d_idx] - entry_c1) * pos * mult1 * lots1
+                p2 = (c2[d_idx] - entry_c2) * (-pos) * mult2 * lots2
+                cost1 = 2 * COST_PER_SIDE * entry_c1 * mult1 * lots1
+                cost2 = 2 * COST_PER_SIDE * entry_c2 * mult2 * lots2
+                net = p1 + p2 - cost1 - cost2
                 realized += net
                 trades.append({
                     'entry_time': pd.Timestamp(common_dates[d_idx - entry_day_count]),
                     'exit_time': pd.Timestamp(date),
                     'direction': pos, 'hold': entry_day_count,
-                    'pnl': net, 'reason': exit_reason, 'symbol': 'V4g',
-                    'margin': rb_lots * V4G_RB_MARGIN + i_lots * V4G_I_MARGIN,
+                    'pnl': net, 'reason': exit_reason, 'symbol': pair_name,
+                    'margin': pair_margin,
                 })
                 pos = 0
 
         unr = 0.0
         if pos != 0:
-            unr = ((rb_close[d_idx] - entry_rb) * pos * rb_mult * rb_lots +
-                   (i_close[d_idx] - entry_i) * (-pos) * i_mult * i_lots)
+            unr = ((c1[d_idx] - entry_c1) * pos * mult1 * lots1 +
+                   (c2[d_idx] - entry_c2) * (-pos) * mult2 * lots2)
 
         daily_equity.append((pd.Timestamp(date), realized + unr))
 
         if pos == 0:
             if z > z_entry:
-                pos = -1; entry_rb = rb_close[d_idx]; entry_i = i_close[d_idx]; entry_day_count = 0
+                pos = -1; entry_c1 = c1[d_idx]; entry_c2 = c2[d_idx]; entry_day_count = 0
             elif z < -z_entry:
-                pos = 1; entry_rb = rb_close[d_idx]; entry_i = i_close[d_idx]; entry_day_count = 0
+                pos = 1; entry_c1 = c1[d_idx]; entry_c2 = c2[d_idx]; entry_day_count = 0
 
     return trades, daily_equity
 
@@ -497,10 +509,11 @@ def margin_analysis(all_trades):
 # ============================================================================
 def main():
     print('=' * 110)
-    print('  V10 Final — V9方向策略 + V4g价差套利 Portfolio')
+    print('  V10 Final — V9方向策略 + 双配对价差套利 Portfolio')
     print(f'  V9: 6 detectors | {len(V9_SYMBOLS)}品种 | SL={SL_ATR} TP={TP_ATR} MH={MAX_HOLD} | 仅日盘')
-    print(f'  V4g: RB-I价差 | Z_in={V4G_Z_ENTRY} Z_out={V4G_Z_EXIT} '
-          f'LB={V4G_LOOKBACK} MH={V4G_MAX_HOLD}日 | RB{V4G_RB_LOTS}+I{V4G_I_LOTS}手')
+    for pn, pc in SPREAD_PAIRS.items():
+        print(f'  {pn}: Z_in={pc["z_entry"]} Z_out={pc["z_exit"]} '
+              f'LB={pc["lookback"]} MH={pc["max_hold"]}日 | {pc["lots1"]}+{pc["lots2"]}手')
     print(f'  品种: {", ".join(c["name"]+"("+str(c["lots"])+"手)" for c in V9_SYMBOLS.values())}')
     print('=' * 110)
 
@@ -532,17 +545,24 @@ def main():
     v9_all_trades.sort(key=lambda x: x['entry_time'])
     v9_stats = calc_stats(v9_all_trades)
 
-    # ─── 2. V4g ───
-    print(f'  运行V4g...')
-    v4g_trades, v4g_eq = run_v4g()
-    v4g_stats = calc_stats(v4g_trades) if v4g_trades else None
+    # ─── 2. 价差配对 ───
+    all_spread_trades = []
+    spread_equity = {}
+    spread_stats = {}
+
+    for pair_name, pair_cfg in SPREAD_PAIRS.items():
+        print(f'  运行{pair_name}...')
+        trades, eq = run_spread_pair(pair_name, pair_cfg)
+        all_spread_trades.extend(trades)
+        spread_equity[pair_name] = eq
+        spread_stats[pair_name] = calc_stats(trades) if trades else None
 
     # ─── 3. 组合 ───
-    combined_trades = v9_all_trades + v4g_trades
+    combined_trades = v9_all_trades + all_spread_trades
     combined_trades.sort(key=lambda x: x['entry_time'])
 
     combined_equity = dict(v9_equity)
-    combined_equity['V4g'] = v4g_eq
+    combined_equity.update(spread_equity)
 
     combined_stats = calc_stats(combined_trades)
     mtm_dd = calc_mtm_dd(combined_equity)
@@ -550,15 +570,11 @@ def main():
     # IS / OOS
     v9_is = [t for t in v9_all_trades if t['entry_time'].year <= 2019]
     v9_oos = [t for t in v9_all_trades if t['entry_time'].year >= 2020]
-    v4g_is = [t for t in v4g_trades if t['entry_time'].year <= 2019]
-    v4g_oos = [t for t in v4g_trades if t['entry_time'].year >= 2020]
     combo_is = [t for t in combined_trades if t['entry_time'].year <= 2019]
     combo_oos = [t for t in combined_trades if t['entry_time'].year >= 2020]
 
     v9_s_is = calc_stats(v9_is) if len(v9_is) >= 10 else None
     v9_s_oos = calc_stats(v9_oos) if len(v9_oos) >= 10 else None
-    v4g_s_is = calc_stats(v4g_is) if len(v4g_is) >= 5 else None
-    v4g_s_oos = calc_stats(v4g_oos) if len(v4g_oos) >= 5 else None
     combo_s_is = calc_stats(combo_is) if len(combo_is) >= 10 else None
     combo_s_oos = calc_stats(combo_oos) if len(combo_oos) >= 10 else None
 
@@ -592,16 +608,22 @@ def main():
           f'{v9_stats["sh"]:>+6.2f} {v9_stats["dd"]*100:>6.1f}% {v9_stats["pnl"]:>+11,.0f} '
           f'{v9_s_is["sh"] if v9_s_is else 0:>+5.2f} {v9_s_oos["sh"] if v9_s_oos else 0:>+6.2f}')
 
-    if v4g_stats:
-        print(f'  {"V4g":>6} {v4g_stats["n"]:>5} {v4g_stats["wr"]:>5.1f}% {v4g_stats["ann"]:>+7.1f}% '
-              f'{v4g_stats["sh"]:>+6.2f} {v4g_stats["dd"]*100:>6.1f}% {v4g_stats["pnl"]:>+11,.0f} '
-              f'{v4g_s_is["sh"] if v4g_s_is else 0:>+5.2f} {v4g_s_oos["sh"] if v4g_s_oos else 0:>+6.2f}')
+    for pair_name, ss in spread_stats.items():
+        if ss:
+            sp_is = [t for t in all_spread_trades if t['symbol'] == pair_name and t['entry_time'].year <= 2019]
+            sp_oos = [t for t in all_spread_trades if t['symbol'] == pair_name and t['entry_time'].year >= 2020]
+            sp_s_is = calc_stats(sp_is) if len(sp_is) >= 3 else None
+            sp_s_oos = calc_stats(sp_oos) if len(sp_oos) >= 3 else None
+            print(f'  {pair_name:>6} {ss["n"]:>5} {ss["wr"]:>5.1f}% {ss["ann"]:>+7.1f}% '
+                  f'{ss["sh"]:>+6.2f} {ss["dd"]*100:>6.1f}% {ss["pnl"]:>+11,.0f} '
+                  f'{sp_s_is["sh"] if sp_s_is else 0:>+5.2f} {sp_s_oos["sh"] if sp_s_oos else 0:>+6.2f}')
 
     # 组合
     print(f'\n{"─" * 110}')
     print(f'  2) Portfolio组合 — V9满仓 + V4g')
     print(f'{"─" * 110}')
-    print(f'  交易数:    {combined_stats["n"]}笔 (V9={v9_stats["n"]}, V4g={v4g_stats["n"] if v4g_stats else 0})')
+    sp_detail = ', '.join(f'{pn}={ss["n"]}' for pn, ss in spread_stats.items() if ss)
+    print(f'  交易数:    {combined_stats["n"]}笔 (V9={v9_stats["n"]}, {sp_detail})')
     print(f'  胜率:      {combined_stats["wr"]:.1f}%')
     print(f'  年化:      {combined_stats["ann"]:.1f}%')
     print(f'  Sharpe:    {combined_stats["sh"]:.2f}')
@@ -637,32 +659,42 @@ def main():
     print(f'  4) 年度明细')
     print(f'{"─" * 110}')
     v9_yrs = calc_yearly(v9_all_trades)
-    v4g_yrs = calc_yearly(v4g_trades)
+    spread_yrs = {}
+    for pn in SPREAD_PAIRS:
+        sp_trades = [t for t in all_spread_trades if t['symbol'] == pn]
+        spread_yrs[pn] = calc_yearly(sp_trades)
     combo_yrs = calc_yearly(combined_trades)
 
-    all_years = sorted(set(list(v9_yrs.keys()) + list(v4g_yrs.keys())))
-    print(f'  {"Year":>6} {"V9_PnL":>12} {"V4g_PnL":>12} {"合计PnL":>12} '
-          f'{"V9_WR%":>7} {"合计Ann%":>9} {"月均笔":>6}')
-    print(f'  {"─" * 70}')
+    all_year_sets = [set(v9_yrs.keys())]
+    for sy in spread_yrs.values():
+        all_year_sets.append(set(sy.keys()))
+    all_years = sorted(set().union(*all_year_sets))
+
+    sp_names = list(SPREAD_PAIRS.keys())
+    sp_hdr = ''.join(f' {pn+"/K":>8}' for pn in sp_names)
+    print(f'  {"Year":>6} {"V9/K":>8}{sp_hdr} {"合计/K":>8} {"Ann%":>7}')
+    print(f'  {"─" * (35 + 9 * len(sp_names))}')
 
     loss_years = 0
     for yr in all_years:
         v9_p = v9_yrs[yr]['pnl'] if yr in v9_yrs else 0
-        v4g_p = v4g_yrs[yr]['pnl'] if yr in v4g_yrs else 0
+        sp_vals = []
+        sp_total = 0
+        for pn in sp_names:
+            p = spread_yrs[pn].get(yr, {}).get('pnl', 0)
+            sp_vals.append(p)
+            sp_total += p
         combo_p = combo_yrs[yr]['pnl'] if yr in combo_yrs else 0
-        v9_wr = v9_yrs[yr]['wr'] if yr in v9_yrs else 0
-        combo_n = combo_yrs[yr]['n'] if yr in combo_yrs else 0
         combo_ann = combo_p / INITIAL_CAPITAL * 100
         flag = ''
         if combo_p < 0:
-            flag = '  <<<'
-            loss_years += 1
-        elif v4g_p > 0 and v9_p < 0:
-            flag = '  V4g救'
-        elif v4g_p > 0:
-            flag = '  +V4g'
-        print(f'  {yr:>6} {v9_p:>+11,.0f} {v4g_p:>+11,.0f} {combo_p:>+11,.0f} '
-              f'{v9_wr:>6.1f}% {combo_ann:>+8.1f}% {combo_n/12:>5.1f}{flag}')
+            flag = '  <<<'; loss_years += 1
+        elif sp_total > 0 and v9_p < 0:
+            flag = '  套利救'
+        elif sp_total > 0:
+            flag = '  +套利'
+        sp_str = ''.join(f' {p/1000:>+7.1f}K' for p in sp_vals)
+        print(f'  {yr:>6} {v9_p/1000:>+7.1f}K{sp_str} {combo_p/1000:>+7.1f}K {combo_ann:>+6.1f}%{flag}')
 
     print(f'  盈利年/总年: {len(all_years)-loss_years}/{len(all_years)}')
 
@@ -671,16 +703,17 @@ def main():
     print(f'  5) 保证金分析')
     print(f'{"─" * 110}')
     v9_margin_static = sum(c['margin'] * c['lots'] for c in V9_SYMBOLS.values())
-    v4g_margin_static = V4G_RB_LOTS * V4G_RB_MARGIN + V4G_I_LOTS * V4G_I_MARGIN
-    print(f'  V9 静态保证金:  {v9_margin_static:>10,}元 '
-          f'(EB{V9_SYMBOLS["EB9999.XDCE"]["lots"]}×{V9_SYMBOLS["EB9999.XDCE"]["margin"]:,} + '
-          f'RB{V9_SYMBOLS["RB9999.XSGE"]["lots"]}×{V9_SYMBOLS["RB9999.XSGE"]["margin"]:,} + '
-          f'J{V9_SYMBOLS["J9999.XDCE"]["lots"]}×{V9_SYMBOLS["J9999.XDCE"]["margin"]:,} + '
-          f'I{V9_SYMBOLS["I9999.XDCE"]["lots"]}×{V9_SYMBOLS["I9999.XDCE"]["margin"]:,})')
-    print(f'  V4g静态保证金:  {v4g_margin_static:>10,}元 '
-          f'(RB{V4G_RB_LOTS}×{V4G_RB_MARGIN:,} + I{V4G_I_LOTS}×{V4G_I_MARGIN:,})')
-    print(f'  合计静态保证金: {v9_margin_static + v4g_margin_static:>10,}元 '
-          f'(资本{INITIAL_CAPITAL:,.0f}元的{(v9_margin_static+v4g_margin_static)/INITIAL_CAPITAL*100:.0f}%)')
+    spread_margin_static = sum(
+        pc['lots1'] * pc['margin1'] + pc['lots2'] * pc['margin2']
+        for pc in SPREAD_PAIRS.values()
+    )
+    total_margin = v9_margin_static + spread_margin_static
+    print(f'  V9 静态保证金:  {v9_margin_static:>10,}元')
+    for pn, pc in SPREAD_PAIRS.items():
+        pm = pc['lots1'] * pc['margin1'] + pc['lots2'] * pc['margin2']
+        print(f'  {pn} 静态保证金: {pm:>10,}元')
+    print(f'  合计静态保证金: {total_margin:>10,}元 '
+          f'(资本{INITIAL_CAPITAL:,.0f}元的{total_margin/INITIAL_CAPITAL*100:.0f}%)')
 
     ma = margin_analysis(combined_trades)
     print(f'  动态峰值保证金: {ma["peak"]:>10,.0f}元')
@@ -725,11 +758,16 @@ def main():
     checks.append(('MtM DD < 50%', mtm_dd < 0.5, f'{mtm_dd*100:.1f}%'))
     checks.append(('亏损年 < 30%', loss_years / len(all_years) < 0.3 if all_years else False,
                     f'{loss_years}/{len(all_years)}'))
-    checks.append(('V4g IS+OOS盈利', v4g_s_is and v4g_s_oos and
-                    v4g_s_is['pnl'] > 0 and v4g_s_oos['pnl'] > 0,
-                    f'IS={v4g_s_is["pnl"]:+,.0f} OOS={v4g_s_oos["pnl"]:+,.0f}' if v4g_s_is and v4g_s_oos else 'N/A'))
-    checks.append(('保证金 < 100K', (v9_margin_static + v4g_margin_static) <= INITIAL_CAPITAL,
-                    f'{v9_margin_static + v4g_margin_static:,}元'))
+    # 检查每个配对IS+OOS
+    for pn in SPREAD_PAIRS:
+        sp_is = [t for t in all_spread_trades if t['symbol'] == pn and t['entry_time'].year <= 2019]
+        sp_oos = [t for t in all_spread_trades if t['symbol'] == pn and t['entry_time'].year >= 2020]
+        is_pnl = sum(t['pnl'] for t in sp_is)
+        oos_pnl = sum(t['pnl'] for t in sp_oos)
+        checks.append((f'{pn} IS+OOS盈利', is_pnl > 0 and oos_pnl > 0,
+                        f'IS={is_pnl:+,.0f} OOS={oos_pnl:+,.0f}'))
+    checks.append(('保证金 < 120K', total_margin <= 120000,
+                    f'{total_margin:,}元'))
 
     for name, passed, val in checks:
         status = 'PASS' if passed else 'FAIL'
