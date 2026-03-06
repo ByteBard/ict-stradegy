@@ -15,7 +15,7 @@ V10 Final — V9方向策略 + 三配对价差套利 Portfolio
 
 诚实执行: gap-open填充 + SL-first + 1tick滑点 + next-bar-open入场
          mark-to-market回撤(逐bar浮动盈亏)
-         V4g日线close入场/出场(无日内前视)
+         V4g: close[T]决策 → close[T+1]入场/出场(无同日前视)
 """
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
@@ -350,7 +350,7 @@ def backtest_v9(signals, opens, highs, lows, closes, ind, n, ts,
                     xp = opens[i]; reason = 'mh'
             if reason:
                 pnl = (xp - ep) * pos * mult * lots
-                comm = 2 * BASE_COMM_RATE * ep * mult * lots
+                comm = BASE_COMM_RATE * (ep + xp) * mult * lots
                 net = pnl - comm - slip
                 realized_pnl += net
                 trades.append({
@@ -451,16 +451,18 @@ def run_spread_pair(pair_name, cfg):
             if not should_exit and entry_day_count >= max_hold:
                 should_exit = True; exit_reason = 'max_hold'
 
-            if should_exit:
-                p1 = (c1[d_idx] - entry_c1) * pos * mult1 * lots1
-                p2 = (c2[d_idx] - entry_c2) * (-pos) * mult2 * lots2
-                cost1 = 2 * COST_PER_SIDE * entry_c1 * mult1 * lots1
-                cost2 = 2 * COST_PER_SIDE * entry_c2 * mult2 * lots2
+            if should_exit and d_idx + 1 < len(common_dates):
+                exit_c1 = c1[d_idx + 1]
+                exit_c2 = c2[d_idx + 1]
+                p1 = (exit_c1 - entry_c1) * pos * mult1 * lots1
+                p2 = (exit_c2 - entry_c2) * (-pos) * mult2 * lots2
+                cost1 = COST_PER_SIDE * (entry_c1 + exit_c1) * mult1 * lots1
+                cost2 = COST_PER_SIDE * (entry_c2 + exit_c2) * mult2 * lots2
                 net = p1 + p2 - cost1 - cost2
                 realized += net
                 trades.append({
-                    'entry_time': pd.Timestamp(common_dates[d_idx - entry_day_count]),
-                    'exit_time': pd.Timestamp(date),
+                    'entry_time': pd.Timestamp(common_dates[d_idx - entry_day_count + 1]),
+                    'exit_time': pd.Timestamp(common_dates[d_idx + 1]),
                     'direction': pos, 'hold': entry_day_count,
                     'pnl': net, 'reason': exit_reason, 'symbol': pair_name,
                     'margin': pair_margin,
@@ -474,11 +476,11 @@ def run_spread_pair(pair_name, cfg):
 
         daily_equity.append((pd.Timestamp(date), realized + unr))
 
-        if pos == 0:
+        if pos == 0 and d_idx + 1 < len(common_dates):
             if z > z_entry:
-                pos = -1; entry_c1 = c1[d_idx]; entry_c2 = c2[d_idx]; entry_day_count = 0
+                pos = -1; entry_c1 = c1[d_idx + 1]; entry_c2 = c2[d_idx + 1]; entry_day_count = 0
             elif z < -z_entry:
-                pos = 1; entry_c1 = c1[d_idx]; entry_c2 = c2[d_idx]; entry_day_count = 0
+                pos = 1; entry_c1 = c1[d_idx + 1]; entry_c2 = c2[d_idx + 1]; entry_day_count = 0
 
     return trades, daily_equity
 
@@ -508,7 +510,7 @@ def calc_stats(trades, ny=None):
     nt = len(df)
     wr = (df['pnl'] > 0).sum() / nt * 100
     f = df['entry_time'].iloc[0]
-    la = df['entry_time'].iloc[-1]
+    la = max(df['entry_time'].max(), df['exit_time'].max())
     ny = ny or max((la - f).days / 365.25, 0.5)
     ann = pnl / INITIAL_CAPITAL / ny * 100
     df['m'] = df['entry_time'].dt.to_period('M').astype(str)
