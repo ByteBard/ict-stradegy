@@ -30,7 +30,7 @@ BASE_COMM_RATE = 0.00011
 COST_PER_SIDE = 0.00021  # V4g: commission + slippage
 
 # ============================================================================
-# V9 配置
+# V9 配置 (10万版)
 # ============================================================================
 V9_SYMBOLS = {
     'EB9999.XDCE':  {'name': 'EB', 'mult': 5,   'tick': 1.0,  'lots': 4, 'margin': 4000},
@@ -44,7 +44,7 @@ MAX_HOLD = 80
 EMA_SPAN = 15
 COOLDOWN = 8
 
-# V4g 配对配置
+# V4g 配对配置 (10万版)
 SPREAD_PAIRS = {
     'RB-I': {
         'sym1': 'RB9999.XSGE', 'sym2': 'I9999.XDCE',
@@ -67,6 +67,51 @@ SPREAD_PAIRS = {
         'mult1': 10, 'mult2': 10,
         'lots1': 2, 'lots2': 2,
         'margin1': 3500, 'margin2': 3500,
+        'z_entry': 2.5, 'z_exit': 0.3,
+        'lookback': 90, 'max_hold': 20,
+    },
+}
+
+# ============================================================================
+# 20万版配置: +AU黄金 + EB增仓 + OI-P菜油棕榈价差
+# ============================================================================
+V9_SYMBOLS_20W = {
+    'EB9999.XDCE':  {'name': 'EB', 'mult': 5,   'tick': 1.0,  'lots': 6, 'margin': 4000},
+    'RB9999.XSGE':  {'name': 'RB', 'mult': 10,  'tick': 1.0,  'lots': 6, 'margin': 3500},
+    'J9999.XDCE':   {'name': 'J',  'mult': 100, 'tick': 0.5,  'lots': 1, 'margin': 12000},
+    'I9999.XDCE':   {'name': 'I',  'mult': 100, 'tick': 0.5,  'lots': 1, 'margin': 10000},
+    'AU9999.XSGE':  {'name': 'AU', 'mult': 1000,'tick': 0.02, 'lots': 1, 'margin': 45000},
+}
+SPREAD_PAIRS_20W = {
+    'RB-I': {
+        'sym1': 'RB9999.XSGE', 'sym2': 'I9999.XDCE',
+        'mult1': 10, 'mult2': 100,
+        'lots1': 4, 'lots2': 1,
+        'margin1': 3500, 'margin2': 10000,
+        'z_entry': 1.5, 'z_exit': 0.3,
+        'lookback': 90, 'max_hold': 20,
+    },
+    'J-JM': {
+        'sym1': 'J9999.XDCE', 'sym2': 'JM9999.XDCE',
+        'mult1': 100, 'mult2': 60,
+        'lots1': 1, 'lots2': 1,
+        'margin1': 12000, 'margin2': 8000,
+        'z_entry': 2.5, 'z_exit': 0.3,
+        'lookback': 90, 'max_hold': 20,
+    },
+    'RB-HC': {
+        'sym1': 'RB9999.XSGE', 'sym2': 'HC9999.XSGE',
+        'mult1': 10, 'mult2': 10,
+        'lots1': 2, 'lots2': 2,
+        'margin1': 3500, 'margin2': 3500,
+        'z_entry': 2.5, 'z_exit': 0.3,
+        'lookback': 90, 'max_hold': 20,
+    },
+    'OI-P': {
+        'sym1': 'OI9999.XZCE', 'sym2': 'P9999.XDCE',
+        'mult1': 10, 'mult2': 10,
+        'lots1': 1, 'lots2': 1,
+        'margin1': 4000, 'margin2': 5000,
         'z_entry': 2.5, 'z_exit': 0.3,
         'lookback': 90, 'max_hold': 20,
     },
@@ -526,13 +571,32 @@ def margin_analysis(all_trades):
 # Main
 # ============================================================================
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--capital', type=int, default=100000, help='资本额 (100000 or 200000)')
+    args = parser.parse_args()
+
+    global INITIAL_CAPITAL
+    capital = args.capital
+    INITIAL_CAPITAL = float(capital)
+
+    # 根据资本选择配置
+    if capital >= 200000:
+        v9_syms = V9_SYMBOLS_20W
+        sp_pairs = SPREAD_PAIRS_20W
+        mode_name = '20万版'
+    else:
+        v9_syms = V9_SYMBOLS
+        sp_pairs = SPREAD_PAIRS
+        mode_name = '10万版'
+
     print('=' * 110)
-    print('  V10 Final — V9方向策略 + 双配对价差套利 Portfolio')
-    print(f'  V9: 6 detectors | {len(V9_SYMBOLS)}品种 | SL={SL_ATR} TP={TP_ATR} MH={MAX_HOLD} EMA{EMA_SPAN} CD={COOLDOWN} | {len(SPREAD_PAIRS)}价差对')
-    for pn, pc in SPREAD_PAIRS.items():
+    print(f'  V10 Final ({mode_name}) — V9方向策略 + 价差套利 Portfolio')
+    print(f'  V9: 6 detectors | {len(v9_syms)}品种 | SL={SL_ATR} TP={TP_ATR} MH={MAX_HOLD} EMA{EMA_SPAN} CD={COOLDOWN} | {len(sp_pairs)}价差对')
+    for pn, pc in sp_pairs.items():
         print(f'  {pn}: Z_in={pc["z_entry"]} Z_out={pc["z_exit"]} '
               f'LB={pc["lookback"]} MH={pc["max_hold"]}日 | {pc["lots1"]}+{pc["lots2"]}手')
-    print(f'  品种: {", ".join(c["name"]+"("+str(c["lots"])+"手)" for c in V9_SYMBOLS.values())}')
+    print(f'  品种: {", ".join(c["name"]+"("+str(c["lots"])+"手)" for c in v9_syms.values())}')
     print('=' * 110)
 
     # ─── 1. V9 ───
@@ -540,7 +604,7 @@ def main():
     v9_all_trades = []
     v9_equity = {}
 
-    for symbol, cfg in V9_SYMBOLS.items():
+    for symbol, cfg in v9_syms.items():
         df = load_and_resample(symbol, '15min')
         o = df['open'].values.astype(np.float64)
         h = df['high'].values.astype(np.float64)
@@ -568,7 +632,7 @@ def main():
     spread_equity = {}
     spread_stats = {}
 
-    for pair_name, pair_cfg in SPREAD_PAIRS.items():
+    for pair_name, pair_cfg in sp_pairs.items():
         print(f'  运行{pair_name}...')
         trades, eq = run_spread_pair(pair_name, pair_cfg)
         all_spread_trades.extend(trades)
@@ -678,7 +742,7 @@ def main():
     print(f'{"─" * 110}')
     v9_yrs = calc_yearly(v9_all_trades)
     spread_yrs = {}
-    for pn in SPREAD_PAIRS:
+    for pn in sp_pairs:
         sp_trades = [t for t in all_spread_trades if t['symbol'] == pn]
         spread_yrs[pn] = calc_yearly(sp_trades)
     combo_yrs = calc_yearly(combined_trades)
@@ -688,7 +752,7 @@ def main():
         all_year_sets.append(set(sy.keys()))
     all_years = sorted(set().union(*all_year_sets))
 
-    sp_names = list(SPREAD_PAIRS.keys())
+    sp_names = list(sp_pairs.keys())
     sp_hdr = ''.join(f' {pn+"/K":>8}' for pn in sp_names)
     print(f'  {"Year":>6} {"V9/K":>8}{sp_hdr} {"合计/K":>8} {"Ann%":>7}')
     print(f'  {"─" * (35 + 9 * len(sp_names))}')
@@ -720,14 +784,14 @@ def main():
     print(f'\n{"─" * 110}')
     print(f'  5) 保证金分析')
     print(f'{"─" * 110}')
-    v9_margin_static = sum(c['margin'] * c['lots'] for c in V9_SYMBOLS.values())
+    v9_margin_static = sum(c['margin'] * c['lots'] for c in v9_syms.values())
     spread_margin_static = sum(
         pc['lots1'] * pc['margin1'] + pc['lots2'] * pc['margin2']
-        for pc in SPREAD_PAIRS.values()
+        for pc in sp_pairs.values()
     )
     total_margin = v9_margin_static + spread_margin_static
     print(f'  V9 静态保证金:  {v9_margin_static:>10,}元')
-    for pn, pc in SPREAD_PAIRS.items():
+    for pn, pc in sp_pairs.items():
         pm = pc['lots1'] * pc['margin1'] + pc['lots2'] * pc['margin2']
         print(f'  {pn} 静态保证金: {pm:>10,}元')
     print(f'  合计静态保证金: {total_margin:>10,}元 '
@@ -777,14 +841,15 @@ def main():
     checks.append(('亏损年 < 30%', loss_years / len(all_years) < 0.3 if all_years else False,
                     f'{loss_years}/{len(all_years)}'))
     # 检查每个配对IS+OOS
-    for pn in SPREAD_PAIRS:
+    for pn in sp_pairs:
         sp_is = [t for t in all_spread_trades if t['symbol'] == pn and t['entry_time'].year <= 2019]
         sp_oos = [t for t in all_spread_trades if t['symbol'] == pn and t['entry_time'].year >= 2020]
         is_pnl = sum(t['pnl'] for t in sp_is)
         oos_pnl = sum(t['pnl'] for t in sp_oos)
         checks.append((f'{pn} IS+OOS盈利', is_pnl > 0 and oos_pnl > 0,
                         f'IS={is_pnl:+,.0f} OOS={oos_pnl:+,.0f}'))
-    checks.append(('保证金 < 120K', total_margin <= 120000,
+    margin_limit = capital * 1.2
+    checks.append((f'保证金 < {margin_limit/1000:.0f}K', total_margin <= margin_limit,
                     f'{total_margin:,}元'))
 
     for name, passed, val in checks:
