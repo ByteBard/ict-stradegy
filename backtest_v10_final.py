@@ -4,7 +4,7 @@ V10 Final — V9方向策略 + 三配对价差套利 Portfolio
 ====================================================
 组合逻辑:
   1. V9满仓: 6 pattern detectors × 4品种 (EB4/RB6/J1/I1)
-     - SL=2.5×ATR, TP=SL×6.0, MH=80bar, 仅日盘15min
+     - SL=2.5×ATR, TP=SL×7.0, MH=80bar, 仅日盘15min
   2. V4g-RBI: RB-I标准化价差Z-score均值回归 (日线)
      - z_entry=1.5, z_exit=0.3, lookback=90, max_hold=20日, RB4+I1手
   3. V4g-JJM: J-JM标准化价差Z-score均值回归 (日线)
@@ -38,7 +38,7 @@ V9_SYMBOLS = {
     'J9999.XDCE':   {'name': 'J',  'mult': 100, 'tick': 0.5,  'lots': 1, 'margin': 12000},
     'I9999.XDCE':   {'name': 'I',  'mult': 100, 'tick': 0.5,  'lots': 1, 'margin': 10000},
 }
-TP_ATR = 6.0
+TP_ATR = 7.0
 SL_ATR = 2.5
 MAX_HOLD = 80
 
