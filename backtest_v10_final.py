@@ -4,7 +4,7 @@ V10 Final — V9方向策略 + 三配对价差套利 Portfolio
 ====================================================
 组合逻辑:
   1. V9满仓: 6 pattern detectors × 4品种 (EB4/RB6/J1/I1)
-     - SL=2.5×ATR, TP=SL×7.0, MH=80bar, 仅日盘15min
+     - SL=2.5×ATR, TP=SL×7.0, MH=80bar, EMA15, CD=8bar, 仅日盘15min
   2. V4g-RBI: RB-I标准化价差Z-score均值回归 (日线)
      - z_entry=1.5, z_exit=0.3, lookback=90, max_hold=20日, RB4+I1手
   3. V4g-JJM: J-JM标准化价差Z-score均值回归 (日线)
@@ -41,6 +41,8 @@ V9_SYMBOLS = {
 TP_ATR = 7.0
 SL_ATR = 2.5
 MAX_HOLD = 80
+EMA_SPAN = 15
+COOLDOWN = 8
 
 # V4g 配对配置
 SPREAD_PAIRS = {
@@ -116,7 +118,7 @@ def compute_indicators(opens, highs, lows, closes, n):
                      abs(highs[i] - closes[i-1]),
                      abs(lows[i] - closes[i-1]))
     atr = pd.Series(tr).rolling(20, min_periods=1).mean().values
-    ema20 = pd.Series(closes).ewm(span=20).mean().values
+    ema20 = pd.Series(closes).ewm(span=EMA_SPAN).mean().values
     d = np.zeros(n, dtype=int)
     for i in range(n):
         if closes[i] > opens[i]:
@@ -267,7 +269,8 @@ def get_slip(lots):
     return 2.0
 
 def backtest_v9(signals, opens, highs, lows, closes, ind, n, ts,
-                mult, lots, tick, sl_atr=2.0, tp_mult=4.0, max_hold=80):
+                mult, lots, tick, sl_atr=2.0, tp_mult=4.0, max_hold=80,
+                cooldown=COOLDOWN):
     slip = get_slip(lots) * tick * 2 * mult * lots
     ema20 = ind['ema20']
     atr = ind['atr']
@@ -281,6 +284,7 @@ def backtest_v9(signals, opens, highs, lows, closes, ind, n, ts,
     pos = 0
     ep = sp = tp_price = 0.0
     eb = 0
+    last_entry_bar = -cooldown - 1
     for i in range(30, n):
         if pos != 0:
             bh = i - eb
@@ -313,27 +317,31 @@ def backtest_v9(signals, opens, highs, lows, closes, ind, n, ts,
                 })
                 pos = 0
         if pos == 0 and i + 1 < n and i in sig_set:
-            _, sd, slr = sig_set[i]
-            if atr[i] > 0:
-                ema_ok = True
-                if sd == 1 and closes[i] < ema20[i]:
-                    ema_ok = False
-                if sd == -1 and closes[i] > ema20[i]:
-                    ema_ok = False
-                if ema_ok:
-                    ep = opens[i + 1]
-                    eb = i + 1
-                    sld_raw = max(abs(ep - slr), sl_atr * atr[i])
-                    if sld_raw <= 4.0 * atr[i]:
-                        if sld_raw < 0.2 * atr[i]:
-                            sld_raw = 0.2 * atr[i]
-                        if sd == 1:
-                            sp = ep - sld_raw
-                            tp_price = ep + sld_raw * tp_mult
-                        else:
-                            sp = ep + sld_raw
-                            tp_price = ep - sld_raw * tp_mult
-                        pos = sd
+            if cooldown > 0 and (i - last_entry_bar) < cooldown:
+                pass  # cooldown期内跳过
+            else:
+                _, sd, slr = sig_set[i]
+                if atr[i] > 0:
+                    ema_ok = True
+                    if sd == 1 and closes[i] < ema20[i]:
+                        ema_ok = False
+                    if sd == -1 and closes[i] > ema20[i]:
+                        ema_ok = False
+                    if ema_ok:
+                        ep = opens[i + 1]
+                        eb = i + 1
+                        sld_raw = max(abs(ep - slr), sl_atr * atr[i])
+                        if sld_raw <= 4.0 * atr[i]:
+                            if sld_raw < 0.2 * atr[i]:
+                                sld_raw = 0.2 * atr[i]
+                            if sd == 1:
+                                sp = ep - sld_raw
+                                tp_price = ep + sld_raw * tp_mult
+                            else:
+                                sp = ep + sld_raw
+                                tp_price = ep - sld_raw * tp_mult
+                            pos = sd
+                            last_entry_bar = i
         unr = 0.0
         if pos != 0 and eb <= i:
             unr = (closes[i] - ep) * pos * mult * lots
@@ -520,7 +528,7 @@ def margin_analysis(all_trades):
 def main():
     print('=' * 110)
     print('  V10 Final — V9方向策略 + 双配对价差套利 Portfolio')
-    print(f'  V9: 6 detectors | {len(V9_SYMBOLS)}品种 | SL={SL_ATR} TP={TP_ATR} MH={MAX_HOLD} | 仅日盘 | {len(SPREAD_PAIRS)}价差对')
+    print(f'  V9: 6 detectors | {len(V9_SYMBOLS)}品种 | SL={SL_ATR} TP={TP_ATR} MH={MAX_HOLD} EMA{EMA_SPAN} CD={COOLDOWN} | {len(SPREAD_PAIRS)}价差对')
     for pn, pc in SPREAD_PAIRS.items():
         print(f'  {pn}: Z_in={pc["z_entry"]} Z_out={pc["z_exit"]} '
               f'LB={pc["lookback"]} MH={pc["max_hold"]}日 | {pc["lots1"]}+{pc["lots2"]}手')
